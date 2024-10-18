@@ -5,6 +5,10 @@
 ------------------------------------------------------------------------------------------------------------------------
 @Description    : as below
 get basic building outline results by 0d- and 1d- persistent homology (gudhi version)
+
+
+
+
 """
 
 import numpy as np
@@ -14,7 +18,7 @@ from shapely.geometry import Polygon
 from sklearn.cluster import DBSCAN
 
 from utils.mdl_geo import arr2Geo
-from utils.mdl_procs import down_sample_cloud
+#from utils.mdl_procs import down_sample_cloud
 from utils.mdl_PH_gu import calc_PH_gu, calc_PH_0d_gu, calc_PH_1d_gu
 
 
@@ -104,7 +108,7 @@ def get_autooptim_bf_radius_GU(bldi_2d: np.ndarray, down_sample_num: float = 500
     ##############
     # get buffer radius by 0d and 1d PH (using gudhi)
     ##############
-
+    """
     if is_down==False: # not down_sampling for speed-up 1d
         pers_0d, bfr_0d, pers_1d, bfr_1d = calc_PH_gu(bldi_2d, isDebug=isDebug)# , isDebug=isDebug)
     else:
@@ -121,7 +125,7 @@ def get_autooptim_bf_radius_GU(bldi_2d: np.ndarray, down_sample_num: float = 500
             # bldi_2d_down = bldi_2d
             pers_0d, bfr_0d, pers_1d, bfr_1d = calc_PH_gu(bldi_2d, isDebug=isDebug)  # , isDebug=isDebug)
 
-
+    """
     if isDebug:
         print(f"[1-get_basic_ol/get_optim_bf_radius()] :: calc_PH_0d :: bfr_0d={bfr_0d}, pers_0d=\n{pers_0d}")
         print(f"[1-get_basic_ol/get_optim_bf_radius()] :: calc_PH_1d :: bfr_1d={bfr_1d}, pers_1d=\n{pers_1d}")

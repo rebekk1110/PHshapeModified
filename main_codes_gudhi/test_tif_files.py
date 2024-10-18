@@ -3,8 +3,8 @@ from mdl1_bolPH_gu import main_basicOL
 
 # Define the test files
 test_files = {
-    'testBig': 'test_images/trd_1_crop_188_3-kopi.tif',
-    'testSmall': 'test_images/trd_1_crop_224_4-kopi.tif'
+    'testBig': './test_images/trd_1_crop_188_3-kopi.tif',
+    'testSmall': './test_images/trd_1_crop_224_4-kopi.tif'
 }
 
 # Set up parameters
