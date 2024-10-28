@@ -1,163 +1,65 @@
-"""
-@File           : main_all_gu.py
-@Author         : Gefei Kong
-@Time:          : 05.06.2023 14:38
-------------------------------------------------------------------------------------------------------------------------
-@Description    : as below
-
-"""
-
 import os
-import json
-import numpy as np
+import sys
 import yaml
+import json
+import rasterio
+from .raster_utils import preprocess_raster
+from . import mdl1_bolPH_gu
+from . import mdl2_simp_bol
+from . import mdl_eval
+from .visualization import visualize_results,count_buildings
 
-try:
-    import mdl1_bolPH_gu,mdl2_simp_bol,mdl_eval
-except:
-    from main_codes_gudhi import mdl1_bolPH_gu, mdl2_simp_bol, mdl_eval
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from utils.mdl_io import create_folder
+def load_raster(file_path):
+    with rasterio.open(file_path) as src:
+        image = src.read(1)  # Read the first band
+        return image, src.transform
 
+def main(cfg):
+    os.makedirs(cfg["data"]["output"]["out_simp_folder"], exist_ok=True)
+    os.makedirs(cfg["data"]["output"]["out_eval_folder"], exist_ok=True)
+    print(f"Created output directories: {cfg['data']['output']['out_simp_folder']}, {cfg['data']['output']['out_eval_folder']}")
 
-def get_params(cfg_params:dict) -> (int, int, float, float, float, str):
-    pre_cloud_num = cfg_params["pre_cloud_num"]
-    down_sample_num = cfg_params["down_sample_num"]
-    simp_type = cfg_params["simp"]["type"]
-    thres_simpiou = -1
-    if simp_type == "iou":
-        thres_simpiou = cfg_params["simp"]["thres_iou"]
+    raster_folder = cfg["data"]["input"]["raster_folder"]
+    raster_files = cfg["data"]["input"]["raster_files"]
 
+    for raster_file in raster_files:
+        raster_path = os.path.join(raster_folder, raster_file)
+        raster_image, transform = load_raster(raster_path)
+        
+        preprocessed_raster = preprocess_raster(raster_image)
+        building_outlines = mdl1_bolPH_gu.get_building_outlines_from_raster(preprocessed_raster, transform)
 
-    # calculate other params
-    bfr_tole = np.ceil(cfg_params["point_spacing"] * 10) / 10  # delta_rb+
-    bfr_otdiff = np.floor(cfg_params["point_spacing"]/3*10)/10 # delta_rb-
+        print(f"Number of building outlines detected: {len(building_outlines)}")
+        # Use the base name of the raster file (without extension) for the output JSON
+        base_name = os.path.splitext(raster_file)[0]
+        
+        simplified_outlines = mdl2_simp_bol.main_simp_ol(
+            building_outlines,
+            out_folder=cfg["data"]["output"]["out_simp_folder"],
+            bld_list=[base_name],  # Pass the JSON filename here
+            bfr_tole=cfg["params"]["bfr_tole"],
+            bfr_otdiff=cfg["params"]["bfr_otdiff"],
+            simp_method=cfg["params"]["simp"]["type"]
+        )
+        
+        ph_shape_path = os.path.join(cfg["data"]["output"]["out_simp_folder"], f"{base_name}.json")
+        output_path = os.path.join(cfg["data"]["output"]["out_simp_folder"], f"{base_name}_visualization.png")
+        
+        print(f"Attempting to visualize results:")
+        print(f"  Raster path: {raster_path}")
+        print(f"  PH shape path: {ph_shape_path}")
+        print(f"  Output path: {output_path}")
+        
+        visualize_results(raster_path, ph_shape_path, output_path)
 
-    return pre_cloud_num, down_sample_num, bfr_tole, bfr_otdiff, thres_simpiou, simp_type
+        num_buildings=count_buildings(ph_shape_path)
 
-
-def get_data_pathes(cfg_data:dict,
-                    bfr_tole:float,
-                    bfr_otdiff:float,
-                    simp_type:str,
-                    thres_simpiou:float) -> (str, str, str, str, str, str, str, bool, str):
-    # cfg_data = cfg["data"]
-    ds_type = cfg_data["dataset"] # e.g. "isprs" or "trd"
-
-    cloud_root_folder = cfg_data["input"]["cloud_folder"]
-    cloud_list_path = cfg_data["input"]["cloud_list_path"]
-    cloud_type = cfg_data["input"]["cloud_type"]
-
-    out_root_folder = cfg_data["output"]["out_root_folder"]
-
-    # get other folders for output, and create related folder at the same time.
-    out_base_folder = os.path.join(out_root_folder, ds_type,
-                                  f"to={bfr_tole:.2f}_di={bfr_otdiff:.2f}_{simp_type}_siou{thres_simpiou:.2f}")
-    out_bol_folder =  create_folder(os.path.join(out_base_folder, "1_bol")) # return folder path itself
-    out_simp_folder = create_folder(os.path.join(out_base_folder, "2_sbol"))
-    out_eval_folder = create_folder(os.path.join(out_base_folder, "eval_shp"))
-
-    # get the saved buffer_radius_optim values
-    is_use_saved_bfr = False
-    saved_bfr_optims_path = cfg_data["input"]["saved_bfr_optim_path"]
-    if saved_bfr_optims_path != "":
-        is_use_saved_bfr = True
-    else:
-        saved_bfr_optims_path = os.path.join(os.path.dirname(out_base_folder), f"{ds_type}_all_bfrs_optim.csv")
-        if os.path.exists(saved_bfr_optims_path): # auto check whether the planned saving path exists. if yes, the bfrs_optim has been gotten.
-            is_use_saved_bfr = True
-
-
-    return ds_type, cloud_root_folder, cloud_list_path, cloud_type, \
-           out_bol_folder, out_simp_folder, out_eval_folder, is_use_saved_bfr, saved_bfr_optims_path
-
-
-def get_evalparams(cfg_eval:dict) -> (str,str):
-    eval_gt_path = cfg_eval["eval_gt_path"]
-    is_save_res  = cfg_eval["is_save_res"]
-
-    return eval_gt_path, is_save_res
-
-def main(cfg:dict):
-    #########################
-    # 1. get params and data-io paths.
-    #########################
-    # 1.1. params
-    # bfr_tole: delta_rb+; bfr_otdiff: delta_rb-
-    pre_cloud_num, down_sample_num, bfr_tole, bfr_otdiff, thres_simpiou, simp_type = get_params(cfg["params"])
-    # 1.2. data pathes and out pathes
-    ds_type, cloud_root_folder, cloud_list_path, cloud_type, \
-    out_bol_folder, out_simp_folder, out_eval_folder, \
-    is_use_saved_bfr, save_bfroptim_path = get_data_pathes(cfg["data"], bfr_tole, bfr_otdiff, simp_type, thres_simpiou)
-    # 1.3 isdebug
-    isdebug = cfg["params"].get("isDebug", False)
-
-    #########################
-    # 2. load point cloud data which whose building outlines will be extracted.
-    #########################
-    if "trd" in cloud_list_path:
-        bld_list = np.loadtxt(cloud_list_path).astype("int")
-    else:
-        bld_list = np.loadtxt(cloud_list_path, dtype="str")
-
-    #########################
-    # 3. main workflow.
-    #########################
-    # 3.1 step 1: get basic oultines (bol) by using persistent homology (PH)
-    mdl1_bolPH_gu.main_basicOL(cloud_root_folder, cloud_type, out_bol_folder,
-                               bld_list,
-                               pre_cloud_num, down_sample_num,
-                               bfr_tole=bfr_tole, bfr_otdiff=bfr_otdiff,
-                               is_use_saved_bfr=is_use_saved_bfr,
-                               savename_bfr=save_bfroptim_path,
-                               is_unrefresh_save=False,
-                               is_Debug=isdebug)
-
-    # 3.2 stpe 2: get simplified result based on the choosed simplification method,
-    mdl2_simp_bol.main_simp_ol(out_bol_folder, data_basic_ol_type=".json",
-                               dataset_type=ds_type,
-                               out_folder=out_simp_folder,
-                               bld_list=bld_list,
-                               bfr_tole=bfr_tole, bfr_otdiff=bfr_otdiff,
-                               simp_method=simp_type,
-                               savename_bfr=save_bfroptim_path,
-                               is_unrefresh_save=False,
-                               is_save_fig=cfg["data"]["output"]["is_save_simpfig"],
-                               is_Debug=isdebug)
-
-    #########################
-    # 4. evaluation
-    #########################
-    cfg_eval = cfg["eval"]
-    if cfg_eval["is_eval"]==True:
-        eval_gt_path, is_save_res = get_evalparams(cfg_eval)
-        mdl_eval.main_eval(out_simp_folder, res_type=".json",
-                           shp_gt_path=eval_gt_path,
-                           dataset_type=ds_type,
-                           out_folder=out_eval_folder,
-                           res_base=os.path.basename(out_simp_folder),
-                           bld_list=bld_list,
-                           is_save_res=is_save_res)
-
-
-    return "done."
-
-
-def parse_args():
-    import argparse
-    parser = argparse.ArgumentParser('phshape')
-    parser.add_argument("--config", type=str, default="../config/trd/config_trd_gu_400.yaml",
-                        help="the path of config file.")
-    return parser.parse_args()
-
+    print("Processing completed.")
 
 if __name__ == "__main__":
-    ###############
-    # load yaml file
-    ###############
-    args = parse_args()
-    cfg_path = args.config
-    with open(cfg_path, "r+") as cfg_f:
-        cfg = yaml.load(cfg_f, Loader=yaml.FullLoader)
-
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'config_raster.yaml')
+    with open(config_path, "r") as cfg_file:
+        cfg = yaml.safe_load(cfg_file)
     main(cfg)

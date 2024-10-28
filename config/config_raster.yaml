@@ -1,0 +1,24 @@
+data:
+  input:
+    raster_folder: "test_images/"
+    raster_files:
+      - "trd_1_crop_188_3-kopi.tif"
+      - "trd_1_crop_224_4-kopi.tif"
+  output:
+    out_root_folder: "output/"
+    out_simp_folder: "output/simplified/"
+    out_eval_folder: "output/evaluation/"
+
+params:
+  pre_raster_size: 5000
+  down_sample_factor: 2
+  bfr_tole: 0.5
+  bfr_otdiff: 0.1
+  simp:
+    type: "haus"
+    thres_iou: 0.99
+
+eval:
+  is_eval: false
+  eval_gt_path: "path/to/ground_truth.shp"
+  is_save_res: true
