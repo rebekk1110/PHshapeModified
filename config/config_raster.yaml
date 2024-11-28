@@ -1,0 +1,42 @@
+data:
+  input:
+    big_raster_folder: "test_images/NZ"
+    raster_files: 
+      - name: "segmented"
+        file: "2016_test-kopi-segmented.tif"
+      - name: "image"
+        file: "2016_test-kopi-image.tif"
+        use_for_bounds: true
+
+    shapefile_folder: "output/tiles/shp_tiles" 
+  output:
+    out_root_folder: "output"
+    out_simp_folder: "output/simplified"
+    out_eval_folder: "output/evaluation"
+    out_vis_folder: "output/tiles/visualizations"
+    out_match_folder: "output/matched_outlines"
+    out_tiles_folder: "output/tiles/"
+    out_image_tiles_folder: output/tiles/image_tiles"
+    out_tif_tiles_folder: "output/tiles/tif_tiles/"
+    out_shp_tiles_folder: "output/tiles/shp_tiles/"
+
+
+params:
+  pre_raster_size: 5000
+  down_sample_factor: 2
+  bfr_tole: 0.5
+  bfr_otdiff: 0.1
+  simp:
+    type: "haus"
+    thres_iou: 0.99
+
+visualization:
+  combined_vis_filename: "combined_visualization.png"
+  individual_vis_suffix: "_visualization.png"
+  dpi: 300
+  figsize: [10, 10]
+
+logging:
+  level: "INFO"
+  file: "processing_log.txt"
+

@@ -1,0 +1,286 @@
+'''
+import os
+import rasterio
+from rasterio.plot import show
+import geopandas as gpd
+import matplotlib.pyplot as plt
+from shapely.geometry import box, Polygon, MultiPolygon
+import numpy as np
+from pyproj import CRS, Transformer
+from shapely.validation import make_valid
+from pathlib import Path
+import json
+
+from .config_loader import get_config
+
+def get_tif_bounds_and_info(tif_path):
+    with rasterio.open(tif_path) as src:
+        bounds = src.bounds
+        original_crs = src.crs
+        
+        transformer = Transformer.from_crs(
+            original_crs,
+            CRS.from_epsg(4326),
+            always_xy=True
+        )
+        
+        minx, miny = transformer.transform(bounds.left, bounds.bottom)
+        maxx, maxy = transformer.transform(bounds.right, bounds.top)
+        
+        bounds_wgs84 = Polygon([
+            (minx, miny),
+            (maxx, miny),
+            (maxx, maxy),
+            (minx, maxy),
+            (minx, miny)
+        ])
+        
+        return bounds_wgs84, original_crs, src.transform, src.read(1)
+
+def is_valid_polygon(geom):
+    if geom is None:
+        return False
+    if not isinstance(geom, (Polygon, MultiPolygon)):
+        return False
+    try:
+        valid_geom = make_valid(geom)
+        return valid_geom.is_valid and not valid_geom.is_empty
+    except Exception:
+        return False
+
+def create_visualization(tif_data, transform, buildings_gdf, output_path):
+    fig, ax = plt.subplots(figsize=(20, 20))
+    
+    tif_normalized = normalize_raster(tif_data)
+    show(tif_normalized, transform=transform, ax=ax, cmap='gray')
+    
+    if buildings_gdf is not None and not buildings_gdf.empty:
+        buildings_gdf.boundary.plot(ax=ax, color='red', linewidth=0.5, alpha=0.7)
+    
+    plt.title('Building Outlines overlaid on TIF image')
+    ax.set_axis_off()
+    
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+def get_project_paths():
+    config = get_config()
+    
+    raster_folder = config['data']['input']['big_raster_folder']
+    raster_files = config['data']['input']['raster_files']
+    tif_paths = [{'name': raster['name'], 'path': os.path.join(raster_folder, raster['file'])} for raster in raster_files]
+    
+    output_dir = config['data']['output']['out_root_folder']
+    tiles_dir = config['data']['output']['out_tiles_folder']
+    tif_tiles_dir = config['data']['output']['out_tif_tiles_folder']
+    image_tiles_dir = config['data']['output']['out_image_tiles_folder']
+    shp_tiles_dir = config['data']['output']['out_shp_tiles_folder']
+    shapefile_path = os.path.join(output_dir, "buildings.shp")
+    visualization_path = os.path.join(output_dir, "buildings_overlay.png")
+
+  
+    return {
+        'tif_paths': tif_paths,
+        'output_dir': output_dir,
+        'tiles_dir': tiles_dir,
+        'tif_tiles_dir': tif_tiles_dir,
+        'image_tiles_dir': image_tiles_dir,
+        'shp_tiles_dir': shp_tiles_dir,
+        'shapefile_path': shapefile_path,
+        'visualization_path': visualization_path
+    }
+
+def normalize_raster(raster_data):
+    data = raster_data.astype(np.float32)
+    data[~np.isfinite(data)] = np.nan
+    raster_min, raster_max = np.nanmin(data), np.nanmax(data)
+    
+    if raster_min == raster_max:
+        return np.zeros_like(data, dtype=np.float32)
+    
+    normalized = np.zeros_like(data, dtype=np.float32)
+    mask = ~np.isnan(data)
+    normalized[mask] = (data[mask] - raster_min) / (raster_max - raster_min)
+    normalized[~np.isfinite(normalized)] = 0
+    
+    return normalized
+
+def create_directory(directory):
+    Path(directory).mkdir(parents=True, exist_ok=True)
+
+def load_tile_info(tiles_dir):
+    info_path = os.path.join(tiles_dir, 'tile_info.json')
+    try:
+        with open(info_path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        raise Exception(f"Error loading tile information: {str(e)}")
+
+def save_tile_info(tiles_dir, tile_info):
+    info_path = os.path.join(tiles_dir, 'tile_info.json')
+    try:
+        with open(info_path, 'w') as f:
+            json.dump(tile_info, f, indent=2)
+    except Exception as e:
+        raise Exception(f"Error saving tile information: {str(e)}")
+
+def validate_paths(paths_dict):
+    for name, path in paths_dict.items():
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Required path not found - {name}: {path}")
+    return True
+
+class TileInfo:
+    def __init__(self, tile_id, tif_path, shp_path, bounds, num_buildings=0):
+        self.tile_id = tile_id
+        self.tif_path = tif_path
+        self.shp_path = shp_path
+        self.bounds = bounds
+        self.num_buildings = num_buildings
+    
+    def to_dict(self):
+        return {
+            'tile_id': self.tile_id,
+            'tif_path': self.tif_path,
+            'shp_path': self.shp_path,
+            'bounds': list(self.bounds),
+            'num_buildings': self.num_buildings
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            tile_id=data['tile_id'],
+            tif_path=data['tif_path'],
+            shp_path=data['shp_path'],
+            bounds=data['bounds'],
+            num_buildings=data['num_buildings']
+        )
+
+
+####OLD MAIN_Gu
+import os
+import json
+import rasterio
+import geopandas as gpd
+from tqdm import tqdm
+from shapely.geometry import box, Polygon, mapping
+import traceback
+import sys
+import yaml
+
+from main_codes_gudhi.mdl1_bolPH_gu import get_building_outlines_from_raster
+from main_codes_gudhi.mdl2_simp_bol import main_simp_ol
+from main_codes_gudhi.mdl_eval import evaluate
+from main_codes_gudhi.vis_comp import visualize_tile
+from main_codes_gudhi.match_outlines import process_tile as match_outlines
+
+def main(cfg_path):
+    # Get the absolute path of the config file
+    cfg_path = os.path.abspath(cfg_path)
+    
+    # Check if the config file exists
+    if not os.path.exists(cfg_path):
+        raise FileNotFoundError(f"Config file not found: {cfg_path}")
+
+    # Load configuration
+    with open(cfg_path, 'r') as f:
+        config = yaml.safe_load(f)
+
+    # Set up paths
+    big_raster_folder = config['data']['input']['big_raster_folder']
+    raster_files = config['data']['input']['raster_files']
+    shp_folder = config['data']['input']['shapefile_folder']
+    
+    # Create output folders if they don't exist
+    output_folder = config['data']['output']['out_root_folder']
+    simplified_folder = config['data']['output']['out_simp_folder']
+    eval_folder = config['data']['output']['out_eval_folder']
+    vis_folder = config['data']['output']['out_vis_folder']
+    tif_tiles_folder = config['data']['output']['out_tif_tiles_folder']
+    matched_folder = os.path.join(output_folder, 'matched_outlines')
+
+    for folder in [output_folder, simplified_folder, eval_folder, vis_folder, matched_folder]:
+        os.makedirs(folder, exist_ok=True)
+
+    print(f"TIF tiles folder: {tif_tiles_folder}")
+    print(f"Number of TIF files: {len([f for f in os.listdir(tif_tiles_folder) if f.endswith('.tif')])}")
+    print(f"Image tiles folder: {config['data']['output']['out_image_tiles_folder']}")
+    print(f"Number of image files: {len([f for f in os.listdir(config['data']['output']['out_image_tiles_folder']) if f.endswith('.tif')])}")
+    print(f"Shapefile folder: {shp_folder}")
+    print(f"Number of shapefiles: {len([f for f in os.listdir(shp_folder) if f.endswith('.shp')])}")
+
+    # Initialize a global building counter
+    global_building_counter = 0
+
+    # Process each raster file
+    for raster_info in raster_files:
+        raster_name = raster_info['name']
+        raster_file = raster_info['file']
+        print(f"Processing raster: {raster_name}, file: {raster_file}")
+
+        # Get list of all TIF tiles for this raster
+        tif_files = [f for f in os.listdir(tif_tiles_folder) if f.endswith('.tif')]
+        print(f"Number of TIF files for {raster_name}: {len(tif_files)}")
+
+        for tif_file in tqdm(tif_files, desc=f"Processing {raster_name} tiles"):
+            base_name = os.path.splitext(tif_file)[0]
+            tif_path = os.path.join(tif_tiles_folder, tif_file)
+            shp_path = os.path.join(shp_folder, f"{base_name}.shp")
+            json_path = os.path.join(simplified_folder, f"{base_name}.json")
+            matched_path = os.path.join(matched_folder, f"{base_name}_matched.json")
+            image_path = os.path.join(config['data']['output']['out_image_tiles_folder'], f"{base_name}.tif")
+            vis_output_path = os.path.join(vis_folder, f"{base_name}_combined_visualization.png")
+
+            if not os.path.exists(shp_path):
+                print(f"Warning: Shapefile not found for {base_name}. Skipping this tile.")
+                continue
+
+            try:
+                # Process tile
+                with rasterio.open(tif_path) as raster_image:
+                    image_array = raster_image.read(1)  # Assuming single band image
+                    transform = raster_image.transform
+
+                # Detect buildings
+                detected_buildings = get_building_outlines_from_raster(image_array, transform)
+
+                # Simplify outlines
+                processed_outlines = main_simp_ol(detected_buildings, simplified_folder, [base_name], 
+                                                  config['params']['bfr_tole'], 
+                                                  config['params']['bfr_otdiff'])
+
+                # Save simplified outlines
+                with open(json_path, 'w') as f:
+                    json.dump([mapping(outline) for outline in processed_outlines], f)
+
+                print(f"Processed and saved JSON for {base_name}")
+
+                # Match outlines
+                match_outlines(shp_path, json_path, matched_path)
+                print(f"Matched outlines for {base_name}")
+
+                # Create visualization
+                visualize_tile(tif_path, shp_path, matched_path, vis_output_path, image_path)
+
+                print(f"Processed and saved visualization for {base_name}")
+
+                # Update building counter
+                with open(matched_path, 'r') as f:
+                    matched_data = json.load(f)
+                global_building_counter += len(matched_data)
+
+            except Exception as e:
+                print(f"Error processing {base_name}: {str(e)}")
+                traceback.print_exc()
+
+    print(f"All tiles processed. Total buildings processed: {global_building_counter}")
+
+    # Save the total building count to a file
+    with open(os.path.join(output_folder, 'total_buildings.txt'), 'w') as f:
+        f.write(f"Total buildings processed: {global_building_counter}")
+
+if __name__ == "__main__":
+    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "config_raster.yaml")
+    main(config_path)
+    '''
