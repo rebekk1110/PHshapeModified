@@ -1,137 +1,87 @@
+"""
+@File           : main_all_gu.py
+@Author         : Assistant
+@Time           : Current Date
+------------------------------------------------------------------------------------------------------------------------
+@Description    : Main script to run the entire building outline detection and simplification pipeline
+"""
+
 import os
-import json
-import rasterio
-import geopandas as gpd
-from tqdm import tqdm
-from shapely.geometry import mapping
-import traceback
 import sys
-from pathlib import Path
+import logging
+import geopandas as gpd
+from shapely.geometry import Polygon
 
-# Add the project root directory to the Python path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, project_root)
-from utils.config_loader import get_config
-from utils.utils import get_project_paths, create_directory
+# Add the parent directory to sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Now import the local modules
-from main_codes_gudhi.mdl1_bolPH_gu import get_building_outlines_from_raster
-from main_codes_gudhi.mdl2_simp_bol import main_simp_ol
-from main_codes_gudhi.vis_comp import visualize_tile
+from mdl1_bolPH_gu import main_basicOL
+from mdl2_simp_bol import main_simp_ol
+from mdl_eval import main_eval
+from utils.mdl_io import get_raster_path, get_output_folder, get_gt_shp_path, load_raster
+from utils.mdl_visual import plot_buildings, plot_simplified_buildings, plot_gt_vs_simplified
 
-def process_tile(tile_path, output_folder, vis_folder, gt_shapefile_dir, building_counter, config):
-    try:
-        with rasterio.open(tile_path) as src:
-            raster_data = src.read(1)  # Read the first band
-            transform = src.transform
-            raster_crs = src.crs
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-            # Detect buildings
-            buildings = get_building_outlines_from_raster(raster_data, transform)
-            print(f"Detected {len(buildings)} buildings in tile {os.path.basename(tile_path)}")
+def check_existing_output(out_folder, tile_name, file_pattern):
+    return any(f.startswith(tile_name) and f.endswith(file_pattern) for f in os.listdir(out_folder))
 
-            if buildings:
-                # Simplify outlines
-                bld_list = [os.path.splitext(os.path.basename(tile_path))[0]]
-                simplified_buildings = main_simp_ol(buildings, config, bld_list=bld_list)
-                print(f"Simplified {len(simplified_buildings)} buildings")
+def main_all_gu(tile_name, force_rerun=False):
+    raster_path = get_raster_path(tile_name)
+    mdl1_out_folder = get_output_folder("mdl1")
+    mdl2_out_folder = get_output_folder("mdl2")
+    eval_out_folder = get_output_folder("eval")
+    gt_shp_path = get_gt_shp_path(tile_name)
 
-                # Assign unique IDs and create GeoJSON features
-                features = []
-                for building in simplified_buildings:
-                    feature = {
-                        "type": "Feature",
-                        "geometry": mapping(building),
-                        "properties": {"id": f"B{building_counter}"}
-                    }
-                    features.append(feature)
-                    building_counter += 1
+    # MDL1: Basic Outline Detection
+    if force_rerun or not check_existing_output(mdl1_out_folder, tile_name, '.json'):
+        logging.info("Running MDL1 to get basic outlines...")
+        buildings = main_basicOL(raster_path, mdl1_out_folder, tile_name, is_Debug=True)
+    else:
+        logging.info("MDL1 output found. Loading existing buildings...")
+        buildings = [Polygon(gpd.read_file(os.path.join(mdl1_out_folder, f)).geometry[0]) 
+                     for f in os.listdir(mdl1_out_folder) 
+                     if f.startswith(tile_name) and f.endswith('.json')]
 
-                # Create GeoDataFrame from features
-                gdf = gpd.GeoDataFrame.from_features(features)
-                gdf.set_crs(raster_crs, inplace=True)
+    # MDL2: Simplification
+    if force_rerun or not check_existing_output(mdl2_out_folder, tile_name, '_simplified_building.json'):
+        logging.info("Running MDL2 to simplify the outlines...")
+        simplified_buildings = main_simp_ol(buildings, mdl2_out_folder, tile_name, raster_path, is_Debug=True)
+        raster_data, transform = load_raster(raster_path)
+        plot_simplified_buildings(raster_data, buildings, simplified_buildings, 
+                                  os.path.join(mdl2_out_folder, f"{tile_name}_buildings_comparison.png"), transform, tile_name)
+    else:
+        logging.info("MDL2 output found. Loading simplified buildings...")
+        simplified_buildings = [Polygon(gpd.read_file(os.path.join(mdl2_out_folder, f)).geometry[0]) 
+                                for f in os.listdir(mdl2_out_folder) 
+                                if f.startswith(tile_name) and f.endswith('_simplified_building.json')]
 
-                # Check if all elements have the same CRS
-                if not all(gdf.crs == raster_crs for geom in gdf.geometry):
-                    print(f"WARNING: Not all elements in tile {os.path.basename(tile_path)} have the same CRS")
+    # Evaluation
+    logging.info("Running evaluation...")
+    eval_results = main_eval(res_folder=mdl2_out_folder,
+                            res_type=".json",
+                            gt_shp_path=gt_shp_path,
+                            out_folder=eval_out_folder,
+                            tile_name=tile_name,
+                            is_save_res=True,
+                            use_v2_hausdorff=True)
 
-                # Save as JSON
-                output_name = f"{os.path.splitext(os.path.basename(tile_path))[0]}_buildings.json"
-                output_path = os.path.join(output_folder, output_name)
-                with open(output_path, 'w') as f:
-                    json.dump({
-                        "type": "FeatureCollection",
-                        "features": features,
-                        "crs": str(raster_crs)
-                    }, f, indent=2)
-                print(f"Saved JSON file: {output_path}")
+    # Plot GT vs Simplified with statistics
+    gt_gdf = gpd.read_file(gt_shp_path)
+    simplified_gdf = gpd.GeoDataFrame(geometry=simplified_buildings)
+    plot_gt_vs_simplified(gt_gdf, simplified_gdf, eval_results, 
+                          os.path.join(eval_out_folder, f"{tile_name}_gt_vs_simplified_with_stats.png"), tile_name)
 
-                # Create visualization
-                vis_name = f"{os.path.splitext(os.path.basename(tile_path))[0]}_visualization.png"
-                vis_path = os.path.join(vis_folder, vis_name)
-                
-                # Get the corresponding ground truth shapefile
-                gt_shapefile_name = f"{os.path.splitext(os.path.basename(tile_path))[0]}.shp"
-                gt_shapefile_path = os.path.join(gt_shapefile_dir, gt_shapefile_name)
-                
-                if os.path.exists(gt_shapefile_path):
-                    visualize_tile(raster_data, transform, features, gt_shapefile_path, vis_path, config, tile_path)
-                    print(f"Created visualization with ground truth: {vis_path}")
-                else:
-                    print(f"Ground truth shapefile not found: {gt_shapefile_path}")
-                    visualize_tile(raster_data, transform, features, None, vis_path, config, tile_path)
-                    print(f"Created visualization without ground truth: {vis_path}")
-
-                return len(simplified_buildings)
-            else:
-                return 0
-    except Exception as e:
-        print(f"Error processing tile {tile_path}: {str(e)}")
-        traceback.print_exc()
-        return 0
-
-def main(cfg_path):
-    # Load configuration
-    config = get_config(cfg_path)
-
-    # Get project paths
-    tif_tiles_dir = config['data']['output']['out_tif_tiles_folder']
-    output_folder = config['data']['output']['out_simp_folder']
-    vis_folder = config['data']['output']['out_vis_folder']
-    gt_shapefile_dir = config['data']['input']['shapefile_folder']
-
-    # Print paths for debugging
-    print(f"TIF tiles directory: {tif_tiles_dir}")
-    print(f"Output folder: {output_folder}")
-    print(f"Visualization folder: {vis_folder}")
-    print(f"Ground truth shapefile directory: {gt_shapefile_dir}")
-
-    # Add output_folder to config
-    config['output_folder'] = output_folder
-
-    # Create output folders if they don't exist
-    create_directory(output_folder)
-    create_directory(vis_folder)
-
-    # Initialize total buildings counter
-    total_buildings = 0
-
-    # Process each tile
-    tile_files = [f for f in os.listdir(tif_tiles_dir) if f.endswith('.tif')]
-
-    for tile_file in tqdm(tile_files, desc="Processing tiles"):
-        tile_path = os.path.join(tif_tiles_dir, tile_file)
-        buildings_in_tile = process_tile(tile_path, output_folder, vis_folder, gt_shapefile_dir, total_buildings, config)
-        total_buildings += buildings_in_tile
-
-    # Save total building count
-    try:
-        with open(os.path.join(output_folder, 'building_count.txt'), 'w') as f:
-            f.write(f"Total buildings detected: {total_buildings}")
-        print(f"Total buildings detected: {total_buildings}")
-    except Exception as e:
-        print(f"Error saving building count: {str(e)}")
+    logging.info("Processing complete.")
+    return eval_results
 
 if __name__ == "__main__":
-    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "config_raster.yaml")
-    main(config_path)
+    tile_name = "tile_26_9"
+    force_rerun = input("Force rerun of all steps? (y/n): ").lower() == 'y'
+    
+    results = main_all_gu(tile_name, force_rerun)
+    print(f"Evaluation Results for {tile_name}:")
+    print(f"Mean IoU: {results['IOU'].mean():.4f}")
+    print(f"Mean Hausdorff Distance: {results['HD'].mean():.4f}")
+    

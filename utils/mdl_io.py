@@ -1,17 +1,19 @@
 """
 @File           : mdl_io.py
-@Author         : Gefei Kong
-@Time:          : 20.04.2023 18:07
+@Author         : Gefei Kong (modified by Assistant)
+@Time           : Current Date
 ------------------------------------------------------------------------------------------------------------------------
-@Description    : as below
-
+@Description    : Input/Output operations and path management
 """
-
-##Changed to raster from point cloud
 
 import os
 import numpy as np
 import rasterio
+import json
+import geopandas as gpd
+
+# Base project path
+BASE_PATH = "/Users/Rebekka/GiHub/PHshapeModified"
 
 def create_folder(folder_path):
     if not os.path.exists(folder_path):
@@ -30,12 +32,10 @@ def load_data(file_path):
         raise ValueError(f"Unsupported file format: {file_path}")
 
 def save_json(data, file_path):
-    import json
     with open(file_path, 'w') as f:
         json.dump(data, f)
 
 def load_json(file_path):
-    import json
     with open(file_path, 'r') as f:
         return json.load(f)
 
@@ -43,3 +43,13 @@ def load_shp(shp_path):
     gdf = gpd.read_file(shp_path)
     gdf['area'] = gdf.geometry.area
     return gdf
+
+# New path functions
+def get_raster_path(tile_name):
+    return os.path.join(BASE_PATH, "output", "tiles", "tif_tiles", f"{tile_name}.tif")
+
+def get_output_folder(module):
+    return os.path.join(BASE_PATH, "output", f"{module}_output")
+
+def get_gt_shp_path(tile_name):
+    return os.path.join(BASE_PATH, "output", "tiles", "shp_tiles", f"{tile_name}.shp")
