@@ -23,29 +23,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from modules.eval_basic_ol import load_shp_GT, load_result_polygons, intersection_union, hausdorff_dis, hausdorff_dis_v2
 from utils.mdl_io import load_json
 from utils.mdl_geo import obj2Geo
-
-def load_shp_GT(shp_gt_path, tile_name):
-    gdf = gpd.read_file(shp_gt_path)
-    logging.info(f"Columns in the shapefile: {gdf.columns}")
-    
-    if 'tile' in gdf.columns:
-        gdf = gdf[gdf['tile'] == tile_name]
-    else:
-        logging.warning("'tile' column not found in the shapefile. Using all geometries.")
-    
-    logging.info(f"Number of geometries loaded: {len(gdf)}")
-    return gdf
-
-def load_result_polygons(res_folder, res_type, tile_name):
-    polygons = []
-    for file in os.listdir(res_folder):
-        if file.startswith(tile_name) and file.endswith(res_type):
-            file_path = os.path.join(res_folder, file)
-            data = load_json(file_path)
-            poly = obj2Geo(data)
-            polygons.append(poly)
-    return polygons
-
 def filter_overlapping_buildings(gt_gdf, result_polygons):
     overlapping_gt = []
     for idx, gt_geom in gt_gdf.geometry.items():
@@ -82,22 +59,30 @@ def main_eval(res_folder, res_type, gt_shp_path, out_folder, tile_name, is_save_
     res_df = pd.DataFrame(results, columns=["bid", "geometry", "IOU", "HD"])
     res_df = res_df.dropna()
 
-    logging.info(f"Mean IOU: {res_df['IOU'].mean():.4f}")
-    logging.info(f"Mean HD: {res_df['HD'].mean():.4f}")
+    if res_df.empty:
+        logging.warning("No valid evaluation results. The DataFrame is empty.")
+    else:
+        logging.info(f"Mean IOU: {res_df['IOU'].mean():.4f}")
+        logging.info(f"Mean HD: {res_df['HD'].mean():.4f}")
 
-    if is_save_res:
+    if is_save_res and not res_df.empty:
         savename = os.path.join(out_folder, f"{tile_name}_evaluation")
         res_df.to_csv(f"{savename}.csv", index=False)
         gdf = gpd.GeoDataFrame(res_df, geometry=res_df.geometry)
         gdf.to_file(f"{savename}.shp")
+        logging.info(f"Evaluation results saved to {savename}.csv and {savename}.shp")
+    elif res_df.empty:
+        logging.warning("No results to save. The DataFrame is empty.")
 
     return res_df
 
 if __name__ == "__main__":
-    tile_name = "tile_7_10"  # Replace with your tile name
-    mdl2_out_folder = get_output_folder("mdl2")
-    eval_out_folder = get_output_folder("eval")
-    gt_shp_path = get_gt_shp_path(tile_name)
+    logging.basicConfig(level=logging.INFO)
+    # Add test code here if needed
+    tile_name = "tile_26_9"  # Replace with your tile name
+    mdl2_out_folder = "path/to/mdl2_output"  # Replace with actual path
+    eval_out_folder = "path/to/eval_output"  # Replace with actual path
+    gt_shp_path = "path/to/ground_truth.shp"  # Replace with actual path
 
     eval_results = main_eval(res_folder=mdl2_out_folder,
                              res_type=".json",
@@ -106,6 +91,10 @@ if __name__ == "__main__":
                              tile_name=tile_name,
                              use_v2_hausdorff=True)
 
-    print(f"Evaluation Results for {tile_name}:")
-    print(f"Mean IoU: {eval_results['IOU'].mean():.4f}")
-    print(f"Mean Hausdorff Distance: {eval_results['HD'].mean():.4f}")
+    if eval_results is not None and not eval_results.empty:
+        print(f"Evaluation Results for {tile_name}:")
+        print(f"Mean IoU: {eval_results['IOU'].mean():.4f}")
+        print(f"Mean Hausdorff Distance: {eval_results['HD'].mean():.4f}")
+    else:
+        print("No valid evaluation results.")
+

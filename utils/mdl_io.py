@@ -9,6 +9,7 @@
 import os
 import numpy as np
 import rasterio
+import pickle
 import json
 import geopandas as gpd
 
@@ -53,3 +54,21 @@ def get_output_folder(module):
 
 def get_gt_shp_path(tile_name):
     return os.path.join(BASE_PATH, "output", "tiles", "shp_tiles", f"{tile_name}.shp")
+
+def save_buildings(buildings, output_folder, tile_name):
+    os.makedirs(output_folder, exist_ok=True)
+    file_path = os.path.join(output_folder, f"{tile_name}_buildings.pkl")
+    with open(file_path, 'wb') as f:
+        pickle.dump(buildings, f)
+    print(f"Buildings saved to {file_path}")
+
+def load_buildings(input_folder, tile_name):
+    file_path = os.path.join(input_folder, f"{tile_name}_buildings.pkl")
+    if os.path.exists(file_path):
+        with open(file_path, 'rb') as f:
+            buildings = pickle.load(f)
+        print(f"Buildings loaded from {file_path}")
+        return buildings
+    else:
+        print(f"No saved buildings found for {tile_name}")
+        return None

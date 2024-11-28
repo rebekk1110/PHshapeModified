@@ -3,12 +3,13 @@ from shapely.geometry import Polygon, MultiPolygon
 import os
 import json
 import numpy as np
+from shapely.measurement import hausdorff_distance
 from shapely.ops import unary_union
 import logging
-from shapely.measurement import hausdorff_distance
 
 
-
+'''
+gammel load 
 def load_shp_GT(shp_path, tile_name):
     gdf = gpd.read_file(shp_path)
     logging.info(f"Columns in the shapefile: {gdf.columns}")
@@ -22,14 +23,47 @@ def load_shp_GT(shp_path, tile_name):
     logging.info(f"Number of geometries loaded: {len(gdf)}")
     return gdf
 
+'''
 
+def load_shp_GT(shp_gt_path, tile_name):
+    gdf = gpd.read_file(shp_gt_path)
+    logging.info(f"Columns in the shapefile: {gdf.columns}")
+    if 'tile' in gdf.columns:
+        gdf = gdf[gdf['tile'] == tile_name]
+    else:
+        logging.warning("'tile' column not found in the shapefile. Using all geometries.")
+    
+    logging.info(f"Number of geometries loaded: {len(gdf)}")
+    return gdf
+
+
+
+##vuredere å endre noe i alpha som får den til å lagre i UTF-8
 def load_result_polygons(res_folder, res_type, tile_name):
     polygons = []
     for file in os.listdir(res_folder):
         if file.startswith(tile_name) and file.endswith(res_type):
-            with open(os.path.join(res_folder, file), 'r') as f:
-                data = json.load(f)
-                polygons.append(Polygon(data['coordinates'][0]))
+            file_path = os.path.join(res_folder, file)
+            try:
+                if res_type.lower() == '.json':
+                    # Try UTF-8 first
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                    except UnicodeDecodeError:
+                        # If UTF-8 fails, try with 'latin-1' encoding
+                        with open(file_path, 'r', encoding='latin-1') as f:
+                            data = json.load(f)
+                    poly = Polygon(data['coordinates'][0])
+                elif res_type.lower() == '.shp':
+                    gdf = gpd.read_file(file_path)
+                    poly = gdf.geometry.iloc[0]
+                else:
+                    logging.warning(f"Unsupported file type: {res_type}")
+                    continue
+                polygons.append(poly)
+            except Exception as e:
+                logging.error(f"Error loading file {file_path}: {str(e)}")
     return polygons
 
 def make_valid(polygon):
