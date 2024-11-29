@@ -8,6 +8,8 @@ import numpy as np
 from pyproj import CRS, Transformer
 import fiona
 from shapely.validation import make_valid
+
+
 from utils.utils import get_config, get_project_paths, get_tif_bounds_and_info, is_valid_polygon, create_visualization
 
 def get_buildings_for_area(bounds_wgs84):

@@ -5,7 +5,6 @@
 ------------------------------------------------------------------------------------------------------------------------
 @Description    : Evaluation module for mdl2 using shp files as ground truth
 """
-
 import os
 import sys
 import json
@@ -14,65 +13,64 @@ import pandas as pd
 import geopandas as gpd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from shapely.wkt import dumps  # Add this import
 import seaborn as sns
 import logging
 
-
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from modules.eval_basic_ol import load_shp_GT, load_result_polygons, intersection_union, hausdorff_dis, hausdorff_dis_v2
+from modules.eval_basic_ol import load_shp_GT, load_result_polygons, intersection_union, hausdorff_dis, hausdorff_dis_v2, calculate_metrics
 from utils.mdl_io import load_json
 from utils.mdl_geo import obj2Geo
-def filter_overlapping_buildings(gt_gdf, result_polygons):
-    overlapping_gt = []
-    for idx, gt_geom in gt_gdf.geometry.items():
-        if any(result_poly.intersects(gt_geom) for result_poly in result_polygons):
-            overlapping_gt.append(idx)
-    
-    filtered_gt = gt_gdf.loc[overlapping_gt]
-    logging.info(f"Filtered out {len(gt_gdf) - len(filtered_gt)} non-overlapping ground truth buildings")
-    return filtered_gt
 
 def main_eval(res_folder, res_type, gt_shp_path, out_folder, tile_name, is_save_res=True, use_v2_hausdorff=False):
     os.makedirs(out_folder, exist_ok=True)
 
     # Load ground truth data
-    poly_gt_eval = load_shp_GT(gt_shp_path, tile_name)
+    poly_gt_eval = gpd.read_file(gt_shp_path)
 
     # Load result polygons
     result_polygons = load_result_polygons(res_folder, res_type, tile_name)
 
-    # Filter out non-overlapping ground truth buildings
-    poly_gt_eval = filter_overlapping_buildings(poly_gt_eval, result_polygons)
-
     results = []
-    for i, poly in enumerate(tqdm(result_polygons, desc="Evaluating buildings")):
-        iou = intersection_union(poly, poly_gt_eval, i)
+    for i, pred_poly in enumerate(tqdm(result_polygons, desc="Evaluating buildings")):
+        best_iou = 0
+        best_metrics = None
+        for _, gt_poly in poly_gt_eval.iterrows():
+            metrics = calculate_metrics(pred_poly, gt_poly.geometry)
+            if metrics[0] is not None and metrics[0] > best_iou:
+                best_iou = metrics[0]
+                best_metrics = metrics
         
-        if use_v2_hausdorff:
-            hd = hausdorff_dis_v2(poly, poly_gt_eval, i)
-        else:
-            hd = hausdorff_dis(poly, poly_gt_eval, i)
-        
-        results.append([i+1, poly, iou, hd])
+        if best_metrics:
+            results.append([i+1, pred_poly] + list(best_metrics))
 
-    res_df = pd.DataFrame(results, columns=["bid", "geometry", "IOU", "HD"])
-    res_df = res_df.dropna()
+    res_df = pd.DataFrame(results, columns=["bid", "geometry", "IOU", "HD", "Area", "Perimeter"])
+    res_df = res_df.dropna()  # Remove any rows with None values
 
-    if res_df.empty:
-        logging.warning("No valid evaluation results. The DataFrame is empty.")
-    else:
+    if not res_df.empty:
         logging.info(f"Mean IOU: {res_df['IOU'].mean():.4f}")
         logging.info(f"Mean HD: {res_df['HD'].mean():.4f}")
+        logging.info(f"Mean Area: {res_df['Area'].mean():.4f}")
+        logging.info(f"Mean Perimeter: {res_df['Perimeter'].mean():.4f}")
 
-    if is_save_res and not res_df.empty:
-        savename = os.path.join(out_folder, f"{tile_name}_evaluation")
-        res_df.to_csv(f"{savename}.csv", index=False)
-        gdf = gpd.GeoDataFrame(res_df, geometry=res_df.geometry)
-        gdf.to_file(f"{savename}.shp")
-        logging.info(f"Evaluation results saved to {savename}.csv and {savename}.shp")
-    elif res_df.empty:
-        logging.warning("No results to save. The DataFrame is empty.")
+        if is_save_res:
+            savename = os.path.join(out_folder, f"{tile_name}_evaluation")
+            
+            # Save as CSV with WKT geometries
+            res_df['geometry_wkt'] = res_df['geometry'].apply(lambda geom: dumps(geom))
+            res_df.drop('geometry', axis=1).to_csv(f"{savename}_with_wkt.csv", index=False)
+            logging.info(f"Evaluation results with WKT geometries saved to {savename}_with_wkt.csv")
+
+            try:
+                # Try to save as GeoJSON
+                gdf = gpd.GeoDataFrame(res_df, geometry='geometry')
+                gdf.to_file(f"{savename}.geojson", driver='GeoJSON')
+                logging.info(f"Evaluation results saved to {savename}.geojson")
+            except Exception as e:
+                logging.warning(f"Unable to save as GeoJSON due to: {str(e)}")
+    else:
+        logging.warning("No valid evaluation results. The DataFrame is empty.")
 
     return res_df
 
@@ -95,6 +93,7 @@ if __name__ == "__main__":
         print(f"Evaluation Results for {tile_name}:")
         print(f"Mean IoU: {eval_results['IOU'].mean():.4f}")
         print(f"Mean Hausdorff Distance: {eval_results['HD'].mean():.4f}")
+        print(f"Mean Area: {eval_results['Area'].mean():.4f}")
+        print(f"Mean Perimeter: {eval_results['Perimeter'].mean():.4f}")
     else:
         print("No valid evaluation results.")
-

@@ -110,22 +110,57 @@ def plot_simplified_buildings(raster_data, original_buildings, simplified_buildi
     plt.close()
 
 def plot_gt_vs_simplified(gt_gdf, simplified_gdf, eval_results, output_path, tile_name):
-    fig, ax = plt.subplots(figsize=(12, 12))
-    
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Plot ground truth buildings
     gt_gdf.plot(ax=ax, facecolor='none', edgecolor='red', linewidth=2, label='Ground Truth')
+
+    # Plot simplified buildings
     simplified_gdf.plot(ax=ax, facecolor='none', edgecolor='blue', linewidth=2, label='Simplified')
-    
-    ax.set_title(f'{tile_name} Ground Truth vs Simplified Buildings')
+
+    # Set plot title and labels
+    ax.set_title(f'Ground Truth vs Simplified Buildings - {tile_name}')
+    ax.set_xlabel('X Coordinate')
+    ax.set_ylabel('Y Coordinate')
+
+    # Add legend
     ax.legend()
-    ax.axis('off')
+
+    # Add overall statistics as text
+    stats_text = f"Overall Statistics:\nMean IoU: {eval_results['IOU'].mean():.4f}\nMean HD: {eval_results['HD'].mean():.4f}"
+    if 'Area' in eval_results.columns:
+        stats_text += f"\nMean Area: {eval_results['Area'].mean():.4f}"
+    if 'Perimeter' in eval_results.columns:
+        stats_text += f"\nMean Perimeter: {eval_results['Perimeter'].mean():.4f}"
     
-    stats_text = f"Mean IoU: {eval_results['IOU'].mean():.4f}\n"
-    stats_text += f"Mean Hausdorff Distance: {eval_results['HD'].mean():.4f}"
-    plt.text(0.05, 0.05, stats_text, transform=ax.transAxes, bbox=dict(facecolor='white', alpha=0.8))
-    
+    plt.text(0.05, 0.95, stats_text, transform=ax.transAxes, verticalalignment='top',
+             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    # Add individual building measurements
+    for idx, row in eval_results.iterrows():
+        centroid = row['geometry'].centroid
+        building_stats = f"Building {idx+1}:\nIoU: {row['IOU']:.4f}\nHD: {row['HD']:.4f}"
+        if 'Area' in eval_results.columns:
+            building_stats += f"\nArea: {row['Area']:.4f}"
+        if 'Perimeter' in eval_results.columns:
+            building_stats += f"\nPerim: {row['Perimeter']:.4f}"
+        plt.annotate(building_stats, (centroid.x, centroid.y), xytext=(10, 10), 
+                     textcoords="offset points", fontsize=8, 
+                     bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8),
+                     arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0.5"))
+
+    # Adjust plot limits to show all geometries
+    bounds = gt_gdf.total_bounds.tolist()
+    bounds.extend(simplified_gdf.total_bounds.tolist())
+    ax.set_xlim(min(bounds[::2]), max(bounds[::2]))
+    ax.set_ylim(min(bounds[1::2]), max(bounds[1::2]))
+
+    # Save the plot
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
+
+    print(f"Plot saved to {output_path}")
 
 def plot_initial_separation(raster_data, labeled_buildings, output_path, transform):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))

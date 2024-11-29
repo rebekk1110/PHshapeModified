@@ -23,7 +23,7 @@ data:
 
 params:
   pre_raster_size: 5000
-  down_sample_factor: 2
+  down_sample_factor: 400
   bfr_tole: 0.5
   bfr_otdiff: 0.1
   simp:

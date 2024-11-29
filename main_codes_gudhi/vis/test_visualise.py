@@ -5,7 +5,7 @@ import rasterio
 from rasterio.plot import show
 import numpy as np
 
-def visualize_tiles(tile_directory, num_tiles=60):
+def visualize_tiles(tile_directory, num_tiles=90):
     # Get all TIF files in the directory
     tif_files = [f for f in os.listdir(tile_directory) if f.endswith('.tif')]
     
@@ -16,8 +16,8 @@ def visualize_tiles(tile_directory, num_tiles=60):
     grid_size = int(np.ceil(np.sqrt(len(selected_tiles))))
     
     # Create a figure with subplots
-    fig, axes = plt.subplots(grid_size, grid_size, figsize=(30, 20))
-    fig.suptitle("Visualization of 30 Random Tiles", fontsize=16)
+    fig, axes = plt.subplots(grid_size, grid_size, figsize=(60, 20))
+    fig.suptitle("Visualization of 30 Random Tiles", fontsize=10)
     
     # Flatten the axes array for easier indexing
     axes = axes.flatten()

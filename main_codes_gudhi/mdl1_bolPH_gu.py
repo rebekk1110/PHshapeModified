@@ -75,6 +75,7 @@ def process_building(label, labeled_buildings, transform, down_sample_num, bfr_t
     except Exception as e:
         logging.error(f"Error processing building {label}: {str(e)}")
         return None, None
+        
 
 def main_basicOL(raster_path, out_folder, tile_name, down_sample_num=450, bfr_tole=5e-1, bfr_otdiff=1e-2, 
                  is_use_saved_bfr=False, savename_bfr="", is_unrefresh_save=False, is_Debug=False):

@@ -7,3 +7,6 @@
 use gudhi-python to compute persistent homology
 """
 #from .config_loader import get_config
+
+
+print("Hello, and welcome to my script")

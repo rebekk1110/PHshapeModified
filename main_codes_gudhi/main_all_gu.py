@@ -109,11 +109,11 @@ def main_all_gu(tile_name, force_rerun=False, algorithm='mdl1'):
     return eval_results
 
 if __name__ == "__main__":
-    tile_name = "tile_26_9"
-    force_rerun = input("Force rerun of all steps? (y/n): ").lower() == 'y'
-    algorithm = 'alpha'
+    tile_name = "tile_1_20"
+    algorithm = 'mdl1'
     #input("Choose algorithm (mdl1/alpha): ").lower()
-    
+    force_rerun = input("Force rerun of all steps? (y/n): ").lower() == 'y'
+
     results = main_all_gu(tile_name, force_rerun, algorithm)
     if results is not None and not results.empty:
         print(f"Evaluation Results for {tile_name} using {algorithm}:")
