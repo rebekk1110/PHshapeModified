@@ -19,7 +19,7 @@ import rasterio
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.mdl_io import load_raster, save_json, get_raster_path, get_output_folder
+from utils.mdl_io import load_raster, save_json, get_raster_path, get_output_folder, get_specific_output_folder
 from utils.mdl_geo import poly2Geojson
 from utils.mdl_procs import pre_downsampling
 from utils.mdl_visual import plot_buildings, plot_initial_separation
@@ -40,7 +40,7 @@ def extract_building_polygon(labeled_buildings, label):
     return coords if coords.shape[0] >= 3 else None
 
 def process_building(label, labeled_buildings, transform, down_sample_num, bfr_tole, bfr_otdiff, 
-                     is_Debug, all_bfr_optim, is_use_saved_bfr):
+                     is_Debug, all_bfr_optim, is_use_saved_bfr, pre_cloud_num):
     try:
         building_coords = extract_building_polygon(labeled_buildings, label)
         if building_coords is None:
@@ -52,7 +52,6 @@ def process_building(label, labeled_buildings, transform, down_sample_num, bfr_t
         if is_Debug:
             logging.info(f"Building {label} coordinates shape: {building_coords.shape}")
 
-        pre_cloud_num = 5000
         if building_coords.shape[0] > pre_cloud_num:
             building_coords, _ = pre_downsampling(building_coords, target_num=pre_cloud_num, 
                                                   start_voxel_size=0.5, isDebug=is_Debug)
@@ -75,11 +74,13 @@ def process_building(label, labeled_buildings, transform, down_sample_num, bfr_t
     except Exception as e:
         logging.error(f"Error processing building {label}: {str(e)}")
         return None, None
-        
 
-def main_basicOL(raster_path, out_folder, tile_name, down_sample_num=450, bfr_tole=5e-1, bfr_otdiff=1e-2, 
-                 is_use_saved_bfr=False, savename_bfr="", is_unrefresh_save=False, is_Debug=False):
+def main_basicOL(raster_path, out_folder, tile_name, down_sample_num, bfr_tole, bfr_otdiff, 
+                 is_use_saved_bfr, savename_bfr, is_unrefresh_save, is_Debug, is_random, pre_cloud_num):
     start_time = time.time()
+    
+    # Update the output folder based on whether it's a random tile or not
+    out_folder = get_specific_output_folder("mdl1", is_random)
     os.makedirs(out_folder, exist_ok=True)
 
     raster_data, transform = load_raster(raster_path)
@@ -96,10 +97,10 @@ def main_basicOL(raster_path, out_folder, tile_name, down_sample_num=450, bfr_to
     building_labels = np.unique(labeled_buildings)[1:]
 
     all_bfr_optim = {}
-    if is_use_saved_bfr and os.path.exists(savename_bfr):
+    if is_use_saved_bfr and savename_bfr and os.path.exists(savename_bfr):
         all_bfr_optim = pd.read_csv(savename_bfr, index_col='label').to_dict()['bfr_optim']
         if is_Debug:
-            logging.info("Loaded saved buffer radii")
+            logging.info(f"Loaded saved buffer radii from {savename_bfr}")
 
     buildings = []
     for label in tqdm(building_labels, desc="Processing buildings"):
@@ -108,7 +109,7 @@ def main_basicOL(raster_path, out_folder, tile_name, down_sample_num=450, bfr_to
             continue
 
         building, processed_label = process_building(label, labeled_buildings, transform, down_sample_num, 
-                                                     bfr_tole, bfr_otdiff, is_Debug, all_bfr_optim, is_use_saved_bfr)
+                                                     bfr_tole, bfr_otdiff, is_Debug, all_bfr_optim, is_use_saved_bfr, pre_cloud_num)
         if building is not None:
             buildings.append(building)
             building_json = poly2Geojson(building, round_precision=6)
@@ -117,7 +118,8 @@ def main_basicOL(raster_path, out_folder, tile_name, down_sample_num=450, bfr_to
     if buildings:
         plot_buildings(raster_data, buildings, os.path.join(out_folder, f"{tile_name}_buildings.png"), transform, tile_name)
 
-    if not is_use_saved_bfr and all_bfr_optim:  
+    # Save buffer radii if not using saved ones and new ones were calculated
+    if not is_use_saved_bfr and all_bfr_optim:
         if savename_bfr:
             df = pd.DataFrame.from_dict(all_bfr_optim, orient='index', columns=['bfr_optim'])
             df.index.name = 'label'
@@ -131,14 +133,21 @@ def main_basicOL(raster_path, out_folder, tile_name, down_sample_num=450, bfr_to
     return buildings
 
 if __name__ == "__main__":
+    config = load_config("config.yaml")
     tile_name = "tile_test_1"
     raster_path = get_raster_path(tile_name)
-    out_folder = get_output_folder("mdl1")
-    savename_bfr = os.path.join(os.path.dirname(out_folder), "buffer_radii.csv")
+    out_folder = get_specific_output_folder("mdl1")
+    savename_bfr = os.path.join(os.path.dirname(out_folder), f"{tile_name}_buffer_radii.csv")
 
     detected_buildings = main_basicOL(raster_path, out_folder, tile_name,
+                                      down_sample_num=config['params']['down_sample_factor'],
+                                      bfr_tole=config['params']['bfr_tole'],
+                                      bfr_otdiff=config['params']['bfr_otdiff'],
                                       is_use_saved_bfr=False,
                                       savename_bfr=savename_bfr, 
                                       is_unrefresh_save=True, 
-                                      is_Debug=True)
+                                      is_Debug=True,
+                                      is_random=False,
+                                      pre_cloud_num=config['params']['pre_raster_size'])
     logging.info(f"Number of buildings detected: {len(detected_buildings)}")
+

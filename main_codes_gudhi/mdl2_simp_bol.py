@@ -6,7 +6,7 @@ from tqdm import tqdm
 import rasterio
 
 from modules.simp_basic_ol import simp_poly_Fd, simp_poly_Extmtd
-from utils.mdl_io import load_raster, save_json, get_raster_path, get_output_folder, get_gt_shp_path
+from utils.mdl_io import load_raster, save_json, get_raster_path, get_output_folder, get_gt_shp_path, get_specific_output_folder
 from utils.mdl_geo import poly2Geojson
 from utils.mdl_visual import plot_simplified_buildings
 from mdl1_bolPH_gu import main_basicOL
@@ -14,12 +14,15 @@ from mdl_eval import main_eval
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def main_simp_ol(buildings, out_folder, tile_name, raster_path, bfr_tole=0.5, bfr_otdiff=0.0, simp_method="haus", is_save_fig=False, is_Debug=False):
+def main_simp_ol(buildings, out_folder, tile_name, raster_path, bfr_tole=0.5, bfr_otdiff=0.0, simp_method="haus", is_save_fig=False, is_Debug=False, is_random=False):
     if not buildings:
         logging.warning("No buildings to simplify.")
         return []
 
+    # Update the output folder based on whether it's a random tile or not
+    out_folder = get_specific_output_folder("mdl2", is_random)
     os.makedirs(out_folder, exist_ok=True)
+
     simplified_buildings = []
 
     for i, building in enumerate(tqdm(buildings, desc="Simplifying buildings")):
@@ -49,6 +52,7 @@ def main_simp_ol(buildings, out_folder, tile_name, raster_path, bfr_tole=0.5, bf
             logging.error(f"Error processing building {i+1}: {str(e)}")
 
     return simplified_buildings
+
 
 if __name__ == "__main__":
     # Run mdl1 to get basic outlines

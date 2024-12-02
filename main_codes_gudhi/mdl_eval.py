@@ -20,17 +20,21 @@ import logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules.eval_basic_ol import load_shp_GT, load_result_polygons, intersection_union, hausdorff_dis, hausdorff_dis_v2, calculate_metrics
-from utils.mdl_io import load_json
+from utils.mdl_io import load_json, get_specific_output_folder
 from utils.mdl_geo import obj2Geo
 
-def main_eval(res_folder, res_type, gt_shp_path, out_folder, tile_name, is_save_res=True, use_v2_hausdorff=False):
+def main_eval(res_folder, res_type, gt_shp_path, out_folder, tile_name, is_save_res=True, use_v2_hausdorff=False, is_random=False):
+    # Update the output folder based on whether it's a random tile or not
+    out_folder = get_specific_output_folder("evaluation", is_random)
     os.makedirs(out_folder, exist_ok=True)
 
     # Load ground truth data
     poly_gt_eval = gpd.read_file(gt_shp_path)
+    logging.info(f"Loaded {len(poly_gt_eval)} ground truth polygons")
 
     # Load result polygons
     result_polygons = load_result_polygons(res_folder, res_type, tile_name)
+    logging.info(f"Loaded {len(result_polygons)} result polygons")
 
     results = []
     for i, pred_poly in enumerate(tqdm(result_polygons, desc="Evaluating buildings")):
@@ -44,11 +48,14 @@ def main_eval(res_folder, res_type, gt_shp_path, out_folder, tile_name, is_save_
         
         if best_metrics:
             results.append([i+1, pred_poly] + list(best_metrics))
+        else:
+            logging.warning(f"No valid metrics found for building {i+1}")
 
     res_df = pd.DataFrame(results, columns=["bid", "geometry", "IOU", "HD", "Area", "Perimeter"])
     res_df = res_df.dropna()  # Remove any rows with None values
 
     if not res_df.empty:
+        logging.info(f"Number of buildings evaluated: {len(res_df)}")
         logging.info(f"Mean IOU: {res_df['IOU'].mean():.4f}")
         logging.info(f"Mean HD: {res_df['HD'].mean():.4f}")
         logging.info(f"Mean Area: {res_df['Area'].mean():.4f}")
@@ -91,6 +98,7 @@ if __name__ == "__main__":
 
     if eval_results is not None and not eval_results.empty:
         print(f"Evaluation Results for {tile_name}:")
+        print(f"Number of buildings evaluated: {len(eval_results)}")
         print(f"Mean IoU: {eval_results['IOU'].mean():.4f}")
         print(f"Mean Hausdorff Distance: {eval_results['HD'].mean():.4f}")
         print(f"Mean Area: {eval_results['Area'].mean():.4f}")

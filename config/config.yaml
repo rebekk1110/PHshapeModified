@@ -8,79 +8,98 @@ data:
         file: "2016_test-kopi-image.tif"
         use_for_bounds: true
     shapefile_folder: "output/tiles/shp_tiles" 
-
     tile_folder: "output/tiles/tif_tiles/"
-      tile_type: ".tif"
-      specific_tiles:
-        - name: "t-shape"
-          files: 
-            - "tile_4_4"
-            - "tile_20_5"
-            
-        - name: "horseshoe"
-          files:
-            - "tile_1_3"
-            - "tile_7_18"
-
-        - name: "holes"
-          files:
-            - "tile_26_9"
-            - "tile_0_11"
-
-        - name: "simple"
-          files: 
-            - "tile_30_19"
-
-        - name: "alt_shape"
-          files:
-            - "tile_8_3"
-            - "tile_1_14"
-            - "tile_3_14"
-
-        - name: "curve"
-          files:
-            - "tile_0_7"
-      random_tile: ""
-
-
+    tile_type: ".tif"
+    specific_tiles:
+      - name: "t-shape"
+        files: 
+          - "tile_4_4"
+          - "tile_20_5"
+      - name: "horseshoe"
+        files:
+          - "tile_1_3"
+          - "tile_7_18"
+      - name: "holes"
+        files:
+          - "tile_26_9"
+          - "tile_0_11"
+      - name: "simple"
+        files: 
+          - "tile_30_19"
+      - name: "alt_shape"
+        files:
+          - "tile_8_3"
+          - "tile_1_14"
+          - "tile_3_14"
+      - name: "curve"
+        files:
+          - "tile_0_7"
+    random_tile: ""
 
   output:
     out_root_folder: "output"
-    out_simp_folder: "output/simplified"
-    out_eval_folder: "output/evaluation"
-    out_vis_folder: "output/tiles/visualizations"
-
+    out_spes_folder: 
+      path: "output/spes"
+      out_mld1_folder: "mld1"
+      out_mld2_folder: "mld2"
+      out_eval_folder: "evaluation"
+      out_vis_folder: "visualizations"
+    out_rand_folder:
+      path: "output/rand"
+      out_mld1_folder: "mld1"
+      out_mld2_folder: "mld2"
+      out_eval_folder: "evaluation"
+      out_vis_folder: "visualizations"
     tiles_folder: "output/tiles/"
-    image_tiles_folder: output/tiles/image_tiles"
+    image_tiles_folder: "output/tiles/image_tiles"
     tif_tiles_folder: "output/tiles/tif_tiles/"
     shp_tiles_folder: "output/tiles/shp_tiles/"
-
 
 params:
   pre_raster_size: 5000
   down_sample_factor: 400
-  bfr_tole: 0.5v
+  bfr_tole: 0.5
   bfr_otdiff: 0.1
   point_spacing: 0.28
+  use_saved_bfr: true
+  unrefresh_save: true
+
   simp:
     type: "haus"
     thres_iou: 0.9
   alpha:
     res_type: ".shp"
+    alpha_value: 0.95
+    min_area: 5
   ph-shape:
-    res_tyoe: ".json"
-
+    res_type: ".json"
+    persistence_threshold: 0.1
 
 visualization:
   combined_vis_filename: "combined_visualization.png"
   individual_vis_suffix: "_visualization.png"
   dpi: 300
   figsize: [10, 10]
+  colors:
+    ground_truth: "red"
+    simplified: "blue"
+  linewidths:
+    ground_truth: 2
+    simplified: 2
 
 logging:
   level: "INFO"
   file: "processing_log.txt"
 
-
 eval: 
   eval_gt_path: "output/tiles/shp_tiles/"
+  metrics:
+    - "IOU"
+    - "HD"
+    - "Area"
+    - "Perimeter"
+
+output_formats:
+  - "csv"
+  - "geojson"
+

@@ -56,16 +56,30 @@ def load_result_polygons(res_folder, res_type, tile_name):
                         # If UTF-8 fails, try with 'latin-1' encoding
                         with open(file_path, 'r', encoding='latin-1') as f:
                             data = json.load(f)
-                    poly = Polygon(data['coordinates'][0])
-                elif res_type.lower() == '.shp':
+                    
+                    if isinstance(data, dict) and 'coordinates' in data:
+                        poly = Polygon(data['coordinates'][0])
+                        polygons.append(poly)
+                    elif isinstance(data, list):
+                        for item in data:
+                            if isinstance(item, dict) and 'coordinates' in item:
+                                poly = Polygon(item['coordinates'][0])
+                                polygons.append(poly)
+                    
+                elif res_type.lower() in ['.shp', '.geojson']:
                     gdf = gpd.read_file(file_path)
-                    poly = gdf.geometry.iloc[0]
+                    for geom in gdf.geometry:
+                        if isinstance(geom, Polygon):
+                            polygons.append(geom)
+                        elif isinstance(geom, MultiPolygon):
+                            polygons.extend(list(geom.geoms))
                 else:
                     logging.warning(f"Unsupported file type: {res_type}")
                     continue
-                polygons.append(poly)
             except Exception as e:
                 logging.error(f"Error loading file {file_path}: {str(e)}")
+    
+    logging.info(f"Loaded {len(polygons)} polygons from {res_folder}")
     return polygons
 
 def load_shp_GT(shp_gt_path, tile_name):

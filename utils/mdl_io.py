@@ -3,7 +3,7 @@
 @Author         : Gefei Kong (modified by Assistant)
 @Time           : Current Date
 ------------------------------------------------------------------------------------------------------------------------
-@Description    : Input/Output operations and path management
+@Description    : Input/Output operations, path management, and tile selection
 """
 
 import os
@@ -12,6 +12,10 @@ import rasterio
 import pickle
 import json
 import geopandas as gpd
+import random
+import logging
+import pprint
+import yaml
 
 # Base project path
 BASE_PATH = "/Users/Rebekka/GiHub/PHshapeModified"
@@ -44,13 +48,77 @@ def load_shp(shp_path):
     gdf = gpd.read_file(shp_path)
     gdf['area'] = gdf.geometry.area
     return gdf
+def load_config(config_path):
+    try:
+        with open(config_path, 'r') as file:
+            config = yaml.safe_load(file)
+        print("Configuration loaded successfully. Contents:")
+        pprint.pprint(config)
+        return config
+    except yaml.YAMLError as e:
+        print(f"Error parsing YAML file: {str(e)}")
+        return None
+    except IOError as e:
+        print(f"Error reading config file: {str(e)}")
+        return None
 
-# New path functions
+def get_tile_types(config):
+    try:
+        return [tile_group['name'] for tile_group in config['data']['input']['specific_tiles']]
+    except KeyError as e:
+        logging.error(f"KeyError in get_tile_types: {str(e)}")
+        logging.error("Unable to find 'specific_tiles' in the configuration. Check the config file structure.")
+        return []
+    except TypeError as e:
+        logging.error(f"TypeError in get_tile_types: {str(e)}")
+        logging.error("Unexpected type in configuration. 'specific_tiles' should be a list.")
+        return []
+
+
+def get_tile_list(config, tile_type=None, specific_tiles=None, random_tile=False):
+    try:
+        all_tiles = []
+        for tile_group in config['data']['input']['specific_tiles']:
+            all_tiles.extend(tile_group['files'])
+        
+        if random_tile:
+            return [random.choice(all_tiles)]
+        
+        if specific_tiles:
+            return [tile for tile in specific_tiles if tile in all_tiles]
+        
+        if tile_type:
+            for tile_group in config['data']['input']['specific_tiles']:
+                if tile_group['name'] == tile_type:
+                    return tile_group['files']
+        
+        return all_tiles
+    except KeyError as e:
+        logging.error(f"KeyError in get_tile_list: {str(e)}")
+        return []
+    except TypeError as e:
+        logging.error(f"TypeError in get_tile_list: {str(e)}")
+        logging.error("Unexpected type in configuration. Check the structure of 'specific_tiles'.")
+        return []
+
+
+
+
+
+
+
+
 def get_raster_path(tile_name):
     return os.path.join(BASE_PATH, "output", "tiles", "tif_tiles", f"{tile_name}.tif")
 
-def get_output_folder(module):
+def get_output_folder(module, is_random=False):
+    if module in ['mdl1', 'mdl2', 'evaluation', 'visualizations']:
+        return get_specific_output_folder(module, is_random)
     return os.path.join(BASE_PATH, "output", f"{module}_output")
+
+def get_specific_output_folder(module, is_random=False):
+    base_folder = "rand" if is_random else "spes"
+    return os.path.join(BASE_PATH, "output", base_folder, module)
 
 def get_gt_shp_path(tile_name):
     return os.path.join(BASE_PATH, "output", "tiles", "shp_tiles", f"{tile_name}.shp")
@@ -72,3 +140,10 @@ def load_buildings(input_folder, tile_name):
     else:
         print(f"No saved buildings found for {tile_name}")
         return None
+
+def load_config(config_path):
+    with open(config_path, 'r') as file:
+        return yaml.safe_load(file)
+
+
+
