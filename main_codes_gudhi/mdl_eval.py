@@ -1,5 +1,5 @@
 """
-@File           : mdl2_eval.py
+@File           : mdl_eval.py
 @Author         : Gefei Kong (modified by Rebekka)
 @Time           : Current Date
 ------------------------------------------------------------------------------------------------------------------------
@@ -13,15 +13,55 @@ import pandas as pd
 import geopandas as gpd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from shapely.wkt import dumps  # Add this import
+from shapely.wkt import loads, dumps
 import seaborn as sns
 import logging
+import glob
+from shapely.geometry import Polygon, MultiPolygon, shape
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from modules.eval_basic_ol import load_shp_GT, load_result_polygons, intersection_union, hausdorff_dis, hausdorff_dis_v2, calculate_metrics
+from modules.eval_basic_ol import load_result_polygons,load_shp_GT
 from utils.mdl_io import load_json, get_specific_output_folder
 from utils.mdl_geo import obj2Geo
+from utils.mdl_visual import plot_gt_vs_simplified
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+
+def calculate_metrics(pred_poly, gt_poly):
+    """Calculate evaluation metrics between predicted and ground truth polygons"""
+    try:
+        iou = intersection_union(pred_poly, gt_poly)
+        hd = hausdorff_dis(pred_poly, gt_poly)
+        area = pred_poly.area
+        perimeter = pred_poly.length
+        return iou, hd, area, perimeter
+    except Exception as e:
+        logging.error(f"Error calculating metrics: {str(e)}")
+        logging.debug(f"Predicted polygon: {pred_poly.wkt}")
+        logging.debug(f"Ground truth polygon: {gt_poly.wkt}")
+        return None, None, None, None
+
+def intersection_union(polygon1, polygon2):
+    """Calculate Intersection over Union (IoU) for two polygons"""
+    try:
+        if not polygon1.is_valid:
+            polygon1 = polygon1.buffer(0)
+        if not polygon2.is_valid:
+            polygon2 = polygon2.buffer(0)
+        intersection = polygon1.intersection(polygon2).area
+        union = polygon1.union(polygon2).area
+        return intersection / union if union > 0 else 0
+    except Exception as e:
+        logging.error(f"Error calculating IoU: {str(e)}")
+        return 0
+
+
+def hausdorff_dis(polygon1, polygon2):
+    """Calculate Hausdorff distance between two polygons"""
+    return polygon1.hausdorff_distance(polygon2)
 
 def main_eval(res_folder, res_type, gt_shp_path, out_folder, tile_name, is_save_res=True, use_v2_hausdorff=False, is_random=False):
     # Update the output folder based on whether it's a random tile or not
@@ -29,7 +69,10 @@ def main_eval(res_folder, res_type, gt_shp_path, out_folder, tile_name, is_save_
     os.makedirs(out_folder, exist_ok=True)
 
     # Load ground truth data
-    poly_gt_eval = gpd.read_file(gt_shp_path)
+    poly_gt_eval = load_shp_GT(gt_shp_path, tile_name)
+    if poly_gt_eval is None:
+        logging.error(f"Failed to load ground truth data for {tile_name}")
+        return None
     logging.info(f"Loaded {len(poly_gt_eval)} ground truth polygons")
 
     # Load result polygons
@@ -50,6 +93,8 @@ def main_eval(res_folder, res_type, gt_shp_path, out_folder, tile_name, is_save_
             results.append([i+1, pred_poly] + list(best_metrics))
         else:
             logging.warning(f"No valid metrics found for building {i+1}")
+            logging.debug(f"Predicted polygon for building {i+1}: {pred_poly.wkt}")
+            logging.debug(f"Ground truth polygons: {[p.wkt for p in poly_gt_eval.geometry]}")
 
     res_df = pd.DataFrame(results, columns=["bid", "geometry", "IOU", "HD", "Area", "Perimeter"])
     res_df = res_df.dropna()  # Remove any rows with None values
@@ -76,10 +121,21 @@ def main_eval(res_folder, res_type, gt_shp_path, out_folder, tile_name, is_save_
                 logging.info(f"Evaluation results saved to {savename}.geojson")
             except Exception as e:
                 logging.warning(f"Unable to save as GeoJSON due to: {str(e)}")
+
+        # Generate visualization
+        gt_gdf = gpd.read_file(gt_shp_path)
+        simplified_gdf = gpd.GeoDataFrame(res_df, geometry='geometry')
+        vis_folder = os.path.join(out_folder, 'visualizations')
+        os.makedirs(vis_folder, exist_ok=True)
+        vis_path = os.path.join(vis_folder, f"{tile_name}_gt_vs_simplified_with_stats.png")
+        plot_gt_vs_simplified(gt_gdf, simplified_gdf, res_df, vis_path, tile_name)
+        logging.info(f"Visualization saved to {vis_path}")
+
     else:
         logging.warning("No valid evaluation results. The DataFrame is empty.")
 
     return res_df
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -105,3 +161,4 @@ if __name__ == "__main__":
         print(f"Mean Perimeter: {eval_results['Perimeter'].mean():.4f}")
     else:
         print("No valid evaluation results.")
+

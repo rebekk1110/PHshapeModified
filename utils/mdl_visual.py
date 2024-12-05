@@ -1,16 +1,118 @@
-"""
-@File           : mdl_visual.py
-@Author         : Gefei Kong (modified by Assistant)
-@Time           : Current Date
-------------------------------------------------------------------------------------------------------------------------
-@Description    : Visualization functions for the project
-"""
-
-import os
+import logging
+from shapely.geometry import Polygon, MultiPolygon
 import matplotlib.pyplot as plt
+from matplotlib.collections import PatchCollection
+from matplotlib.patches import Polygon as MplPolygon
 import numpy as np
 import shapely
-import rasterio
+import geopandas as gpd
+import pandas as pd
+
+def plot_gt_vs_simplified(gt_gdf, simplified_gdf, eval_results, output_path, tile_name):
+    logging.info(f"Starting plot generation for tile: {tile_name}")
+    logging.info(f"Ground Truth GeoDataFrame: {len(gt_gdf)} geometries")
+    logging.info(f"Simplified GeoDataFrame: {len(simplified_gdf)} geometries")
+    
+    plt.figure(figsize=(12, 8)) # Updated figure size
+    ax = plt.gca()
+
+    ax.set_aspect('equal', 'box')
+    ax.autoscale_view()
+
+    def plot_polygon(ax, polygon, color, linestyle='-'):
+        if polygon.geom_type == 'Polygon':
+            ax.plot(*polygon.exterior.xy, color=color, linestyle=linestyle, linewidth=2)
+            for interior in polygon.interiors:
+                ax.plot(*interior.xy, color=color, linestyle='--', linewidth=1.5)
+        elif polygon.geom_type == 'MultiPolygon':
+            for geom in polygon.geoms:
+                plot_polygon(ax, geom, color, linestyle)
+
+    # Plot ground truth
+    gt_gdf.plot(ax=ax, facecolor='none', edgecolor='red', linewidth=2)
+    for _, row in gt_gdf.iterrows():
+        plot_polygon(ax, row['geometry'], 'red')
+    logging.info(f"Plotted {len(gt_gdf)} ground truth polygons")
+
+
+    # Plot simplified
+    simplified_gdf.plot(ax=ax, facecolor='none', edgecolor='blue', linewidth=2)
+    for _, row in simplified_gdf.iterrows():
+        plot_polygon(ax, row['geometry'], 'blue')
+    logging.info(f"Plotted {len(simplified_gdf)} simplified polygons")
+
+    ax.set_xlim(gt_gdf.total_bounds[[0, 2]])
+    ax.set_ylim(gt_gdf.total_bounds[[1, 3]])
+
+    gt_line = plt.Line2D([], [], color='red', linestyle='-', label='Ground Truth')
+    gt_interior = plt.Line2D([], [], color='red', linestyle='--', label='Ground Truth Interior')
+    simp_line = plt.Line2D([], [], color='blue', linestyle='-', label='Simplified')
+    simp_interior = plt.Line2D([], [], color='blue', linestyle='--', label='Simplified Interior')
+    ax.legend(handles=[gt_line, gt_interior, simp_line, simp_interior], loc='upper right')
+
+    ax.set_title(f'Ground Truth (Red) vs Simplified (Blue) Buildings - {tile_name}')
+    ax.set_xlabel('X Coordinate')
+    ax.set_ylabel('Y Coordinate')
+
+    stats_text = f"Overall Statistics:\nMean IoU: {eval_results['IOU'].mean():.4f}\nMean HD: {eval_results['HD'].mean():.4f}"
+    if 'Area' in eval_results.columns:
+        stats_text += f"\nMean Area: {eval_results['Area'].mean():.4f}"
+    if 'Perimeter' in eval_results.columns:
+        stats_text += f"\nMean Perimeter: {eval_results['Perimeter'].mean():.4f}"
+    
+    plt.text(0.05, 0.95, stats_text, transform=ax.transAxes, verticalalignment='top',
+             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    for idx, row in eval_results.iterrows():
+        centroid = row['geometry'].centroid
+        building_stats = f"Building {idx+1}:\nIoU: {row['IOU']:.4f}\nHD: {row['HD']:.4f}"
+        if 'Area' in eval_results.columns:
+            building_stats += f"\nArea: {row['Area']:.4f}"
+        if 'Perimeter' in eval_results.columns:
+            building_stats += f"\nPerim: {row['Perimeter']:.4f}"
+        plt.annotate(building_stats, (centroid.x, centroid.y), xytext=(10, 10), 
+                     textcoords="offset points", fontsize=8, 
+                     bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8),
+                     arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0.5"))
+
+    plt.tight_layout()
+
+    logging.info(f"Saving plot to: {output_path}")
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    logging.info(f"Plot saved to {output_path}")
+    logging.info("Plot generation completed")
+
+def plot_initial_separation(raster_data, labeled_buildings, output_path, transform):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
+    
+    # Plot original raster
+    ax1.imshow(raster_data, cmap='gray', extent=[0, raster_data.shape[1], raster_data.shape[0], 0])
+    ax1.set_title('Original Raster')
+    ax1.set_xlim(0, raster_data.shape[1])
+    ax1.set_ylim(raster_data.shape[0], 0)
+    
+    # Plot labeled buildings
+    unique_labels = np.unique(labeled_buildings)
+    num_labels = len(unique_labels) - 1  # Subtract 1 to exclude background
+    cmap = plt.get_cmap('tab20')
+    labeled_buildings_colored = np.zeros((*labeled_buildings.shape, 3))
+    
+    for i, label in enumerate(unique_labels[1:]):  # Skip background (0)
+        mask = labeled_buildings == label
+        color = cmap(i / num_labels)[:3]
+        labeled_buildings_colored[mask] = color
+    
+    ax2.imshow(labeled_buildings_colored, extent=[0, raster_data.shape[1], raster_data.shape[0], 0])
+    ax2.set_title(f'Separated Buildings (Total: {num_labels})')
+    ax2.set_xlim(0, raster_data.shape[1])
+    ax2.set_ylim(raster_data.shape[0], 0)
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    logging.info(f"Initial separation plot saved to {output_path}")
 
 def drawmultipolygon(polygon:shapely.geometry, pts:np.ndarray=None, title:str="", savepath:str=""):
     fcolor=["r","b","g","c"]
@@ -64,130 +166,3 @@ def show_ifd_shape(org_data:np.ndarray, ifd_topP_coords:np.ndarray, title:str=""
     else:
         plt.savefig(savepath, dpi=300)
         plt.close()
-
-# New plot functions
-def plot_buildings(raster_data, buildings, output_path, transform, tile_name):
-    fig, ax = plt.subplots(figsize=(12, 12))
-    ax.imshow(raster_data, cmap='gray', alpha=0.5, extent=[0, raster_data.shape[1], raster_data.shape[0], 0])
-
-    for building in buildings:
-        coords = np.array(building.exterior.coords)
-        rows, cols = rasterio.transform.rowcol(transform, coords[:, 0], coords[:, 1])
-        ax.plot(cols, rows, color='red', linewidth=2)
-
-    ax.set_title(f'{tile_name} Detected Buildings (Total: {len(buildings)})')
-    ax.set_xlim(0, raster_data.shape[1])
-    ax.set_ylim(raster_data.shape[0], 0)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
-
-def plot_simplified_buildings(raster_data, original_buildings, simplified_buildings, output_path, transform, tile_name):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
-    
-    # Plot original buildings
-    ax1.imshow(raster_data, cmap='gray', alpha=0.5, extent=[0, raster_data.shape[1], raster_data.shape[0], 0])
-    for building in original_buildings:
-        coords = np.array(building.exterior.coords)
-        rows, cols = rasterio.transform.rowcol(transform, coords[:, 0], coords[:, 1])
-        ax1.plot(cols, rows, color='red', linewidth=2)
-    ax1.set_title(f'{tile_name} Original Buildings (Total: {len(original_buildings)})')
-    ax1.set_xlim(0, raster_data.shape[1])
-    ax1.set_ylim(raster_data.shape[0], 0)
-
-    # Plot simplified buildings
-    ax2.imshow(raster_data, cmap='gray', alpha=0.5, extent=[0, raster_data.shape[1], raster_data.shape[0], 0])
-    for building in simplified_buildings:
-        coords = np.array(building.exterior.coords)
-        rows, cols = rasterio.transform.rowcol(transform, coords[:, 0], coords[:, 1])
-        ax2.plot(cols, rows, color='blue', linewidth=2)
-    ax2.set_title(f'{tile_name} Simplified Buildings (Total: {len(simplified_buildings)})')
-    ax2.set_xlim(0, raster_data.shape[1])
-    ax2.set_ylim(raster_data.shape[0], 0)
-
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
-
-def plot_gt_vs_simplified(gt_gdf, simplified_gdf, eval_results, output_path, tile_name):
-    fig, ax = plt.subplots(figsize=(12, 8))
-
-    # Plot ground truth buildings
-    gt_gdf.plot(ax=ax, facecolor='none', edgecolor='red', linewidth=2, label='Ground Truth')
-
-    # Plot simplified buildings
-    simplified_gdf.plot(ax=ax, facecolor='none', edgecolor='blue', linewidth=2, label='Simplified')
-
-    # Set plot title and labels
-    ax.set_title(f'Ground Truth vs Simplified Buildings - {tile_name}')
-    ax.set_xlabel('X Coordinate')
-    ax.set_ylabel('Y Coordinate')
-
-    # Add legend
-    ax.legend()
-
-    # Add overall statistics as text
-    stats_text = f"Overall Statistics:\nMean IoU: {eval_results['IOU'].mean():.4f}\nMean HD: {eval_results['HD'].mean():.4f}"
-    if 'Area' in eval_results.columns:
-        stats_text += f"\nMean Area: {eval_results['Area'].mean():.4f}"
-    if 'Perimeter' in eval_results.columns:
-        stats_text += f"\nMean Perimeter: {eval_results['Perimeter'].mean():.4f}"
-    
-    plt.text(0.05, 0.95, stats_text, transform=ax.transAxes, verticalalignment='top',
-             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-
-    # Add individual building measurements
-    for idx, row in eval_results.iterrows():
-        centroid = row['geometry'].centroid
-        building_stats = f"Building {idx+1}:\nIoU: {row['IOU']:.4f}\nHD: {row['HD']:.4f}"
-        if 'Area' in eval_results.columns:
-            building_stats += f"\nArea: {row['Area']:.4f}"
-        if 'Perimeter' in eval_results.columns:
-            building_stats += f"\nPerim: {row['Perimeter']:.4f}"
-        plt.annotate(building_stats, (centroid.x, centroid.y), xytext=(10, 10), 
-                     textcoords="offset points", fontsize=8, 
-                     bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8),
-                     arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0.5"))
-
-    # Adjust plot limits to show all geometries
-    bounds = gt_gdf.total_bounds.tolist()
-    bounds.extend(simplified_gdf.total_bounds.tolist())
-    ax.set_xlim(min(bounds[::2]), max(bounds[::2]))
-    ax.set_ylim(min(bounds[1::2]), max(bounds[1::2]))
-
-    # Save the plot
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
-
-    print(f"Plot saved to {output_path}")
-
-def plot_initial_separation(raster_data, labeled_buildings, output_path, transform):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
-    
-    # Plot original raster
-    ax1.imshow(raster_data, cmap='gray', extent=[0, raster_data.shape[1], raster_data.shape[0], 0])
-    ax1.set_title('Original Raster')
-    ax1.set_xlim(0, raster_data.shape[1])
-    ax1.set_ylim(raster_data.shape[0], 0)
-    
-    # Plot labeled buildings
-    unique_labels = np.unique(labeled_buildings)
-    num_labels = len(unique_labels) - 1  # Subtract 1 to exclude background
-    cmap = plt.get_cmap('tab20')
-    labeled_buildings_colored = np.zeros((*labeled_buildings.shape, 3))
-    
-    for i, label in enumerate(unique_labels[1:]):  # Skip background (0)
-        mask = labeled_buildings == label
-        color = cmap(i / num_labels)[:3]
-        labeled_buildings_colored[mask] = color
-    
-    ax2.imshow(labeled_buildings_colored, extent=[0, raster_data.shape[1], raster_data.shape[0], 0])
-    ax2.set_title(f'Separated Buildings (Total: {num_labels})')
-    ax2.set_xlim(0, raster_data.shape[1])
-    ax2.set_ylim(raster_data.shape[0], 0)
-    
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"Initial separation plot saved to {output_path}")

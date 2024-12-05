@@ -8,7 +8,6 @@ import sys
 import argparse
 
 
-##FUNket ikke, prøver å lage ny med feilmelding i v0###
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

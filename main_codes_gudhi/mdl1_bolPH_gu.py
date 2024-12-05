@@ -15,14 +15,16 @@ from scipy import ndimage
 from tqdm import tqdm
 import logging
 import pandas as pd
+import geopandas as gpd
 import rasterio
+
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.mdl_io import load_raster, save_json, get_raster_path, get_output_folder, get_specific_output_folder
+from utils.mdl_io import load_raster, save_json, get_raster_path, get_output_folder, get_specific_output_folder, load_config
 from utils.mdl_geo import poly2Geojson
 from utils.mdl_procs import pre_downsampling
-from utils.mdl_visual import plot_buildings, plot_initial_separation
+from utils.mdl_visual import  plot_initial_separation
 from modules.get_basic_ol_v2_gu import get_autooptim_bf_radius_GU, get_build_bf
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -115,8 +117,6 @@ def main_basicOL(raster_path, out_folder, tile_name, down_sample_num, bfr_tole, 
             building_json = poly2Geojson(building, round_precision=6)
             save_json(building_json, savename)
 
-    if buildings:
-        plot_buildings(raster_data, buildings, os.path.join(out_folder, f"{tile_name}_buildings.png"), transform, tile_name)
 
     # Save buffer radii if not using saved ones and new ones were calculated
     if not is_use_saved_bfr and all_bfr_optim:
@@ -125,9 +125,15 @@ def main_basicOL(raster_path, out_folder, tile_name, down_sample_num, bfr_tole, 
             df.index.name = 'label'
             df.to_csv(savename_bfr)
             logging.info(f"Saved buffer radii to {savename_bfr}")
+            logging.info(f"Saved {len(all_bfr_optim)} buffer radii to {savename_bfr}")
+
         else:
             logging.warning("Buffer radii were not saved because savename_bfr was not provided.")
-
+    logging.info(f"Raster file loaded: {raster_path}")
+    logging.info(f"Raster shape: {raster_data.shape}")
+    logging.info(f"Raster data type: {raster_data.dtype}")
+    logging.info(f"Raster data range: min={raster_data.min()}, max={raster_data.max()}")
+    
     logging.info(f"Total buildings detected: {len(buildings)}")
     logging.info(f"Total execution time: {time.time() - start_time:.2f} seconds")
     return buildings

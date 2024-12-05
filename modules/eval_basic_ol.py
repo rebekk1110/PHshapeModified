@@ -24,6 +24,17 @@ def load_shp_GT(shp_path, tile_name):
     return gdf
 
 '''
+def load_shp_GT(shp_gt_path, tile_name):
+    gdf = gpd.read_file(shp_gt_path)
+    logging.info(f"Columns in the shapefile: {gdf.columns}")
+    
+    if 'tile' in gdf.columns:
+        gdf = gdf[gdf['tile'] == tile_name]
+    else:
+        logging.warning("'tile' column not found in the shapefile. Using all geometries.")
+    gdf = gdf.reset_index(drop=True)
+    logging.info(f"Number of geometries loaded: {len(gdf)}")
+    return gdf
 
 def make_valid(polygon):
     # simple_value = 0.5
@@ -82,17 +93,7 @@ def load_result_polygons(res_folder, res_type, tile_name):
     logging.info(f"Loaded {len(polygons)} polygons from {res_folder}")
     return polygons
 
-def load_shp_GT(shp_gt_path, tile_name):
-    gdf = gpd.read_file(shp_gt_path)
-    logging.info(f"Columns in the shapefile: {gdf.columns}")
-    
-    if 'tile' in gdf.columns:
-        gdf = gdf[gdf['tile'] == tile_name]
-    else:
-        logging.warning("'tile' column not found in the shapefile. Using all geometries.")
-    
-    logging.info(f"Number of geometries loaded: {len(gdf)}")
-    return gdf
+
 
 def calculate_metrics(pred_poly: Polygon, gt_poly: Polygon) -> tuple:
     # Attempt to fix invalid geometries

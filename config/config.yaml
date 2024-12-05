@@ -15,17 +15,21 @@ data:
         files: 
           - "tile_4_4"
           - "tile_20_5"
+
       - name: "horseshoe"
         files:
           - "tile_1_3"
           - "tile_7_18"
+
       - name: "holes"
         files:
           - "tile_26_9"
-          - "tile_0_11"
+       #   - "tile_0_14"
+
       - name: "simple"
         files: 
           - "tile_30_19"
+
       - name: "alt_shape"
         files:
           - "tile_8_3"
@@ -40,14 +44,16 @@ data:
     out_root_folder: "output"
     out_spes_folder: 
       path: "output/spes"
-      out_mld1_folder: "mld1"
-      out_mld2_folder: "mld2"
+      out_mld1_folder: "mdl1"
+      out_mld2_folder: "mdl2"
+      out_alpha_folder: "alpha"
       out_eval_folder: "evaluation"
       out_vis_folder: "visualizations"
     out_rand_folder:
       path: "output/rand"
-      out_mld1_folder: "mld1"
-      out_mld2_folder: "mld2"
+      out_mld1_folder: "mdl1"
+      out_mld2_folder: "mdl2"
+      out_alpha_folder: "alpha"
       out_eval_folder: "evaluation"
       out_vis_folder: "visualizations"
     tiles_folder: "output/tiles/"
@@ -63,14 +69,19 @@ params:
   point_spacing: 0.28
   use_saved_bfr: true
   unrefresh_save: true
+  saved_bfr_optim_path: "" 
 
   simp:
     type: "haus"
     thres_iou: 0.9
   alpha:
     res_type: ".shp"
-    alpha_value: 0.95
-    min_area: 5
+    alpha_value: 0.85
+    min_area: 3
+    buffer_distance: 0.1
+    eps: 1.5
+    min_samples: 4
+    max_area: 600
   ph-shape:
     res_type: ".json"
     persistence_threshold: 0.1

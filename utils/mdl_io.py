@@ -40,6 +40,7 @@ def save_json(data, file_path):
     with open(file_path, 'w') as f:
         json.dump(data, f)
 
+
 def load_json(file_path):
     with open(file_path, 'r') as f:
         return json.load(f)
@@ -101,11 +102,12 @@ def get_tile_list(config, tile_type=None, specific_tiles=None, random_tile=False
         logging.error("Unexpected type in configuration. Check the structure of 'specific_tiles'.")
         return []
 
-
-
-
-
-
+def get_output_folder(algorithm, is_special=False):
+    base_folder = "output"
+    if is_special:
+        return os.path.join(base_folder, "special", algorithm)
+    else:
+        return os.path.join(base_folder, algorithm)
 
 
 def get_raster_path(tile_name):
