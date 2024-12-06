@@ -112,7 +112,6 @@ def main_eval(res_folder, res_type, gt_shp_path, out_folder, tile_name, is_save_
             # Save as CSV with WKT geometries
             res_df['geometry_wkt'] = res_df['geometry'].apply(lambda geom: dumps(geom))
             res_df.drop('geometry', axis=1).to_csv(f"{savename}_with_wkt.csv", index=False)
-            logging.info(f"Evaluation results with WKT geometries saved to {savename}_with_wkt.csv")
 
             try:
                 # Try to save as GeoJSON

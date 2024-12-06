@@ -119,18 +119,13 @@ def process_tile(tile_name, config, algorithm, force_rerun, is_random):
                         raster_path=raster_path,
                         out_folder=alpha_out_folder,
                         tile_name=tile_name,
-                        alpha=alpha_params['alpha_value'],
-                        min_area=alpha_params['min_area'],
-                        buffer=alpha_params['buffer_distance'],
-                        epsilon=alpha_params['eps'],
-                        simplify=alpha_params['min_samples'],
-                        max_area=alpha_params['max_area']
+                        params=alpha_params
                     )
                     logging.info(f"Number of buildings after Alpha Shape detection: {len(buildings)}")
                     
                     # Save the buildings to a GeoJSON file
-                    gdf = gpd.GeoDataFrame(geometry=buildings)
-                    gdf.to_file(alpha_output_file, driver="GeoJSON")
+                   # gdf = gpd.GeoDataFrame(geometry=buildings)
+                    #gdf.to_file(alpha_output_file, driver="GeoJSON")
                 else:
                     logging.info(f"Alpha Shape output found. Loading existing buildings for {tile_name}")
                     buildings = gpd.read_file(alpha_output_file)

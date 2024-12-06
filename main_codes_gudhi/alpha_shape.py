@@ -134,6 +134,10 @@ def alpha_shape_detection(raster_path, tile_name, params):
     # Clip the geometries to the raster bounds
     gdf = gdf.clip(box(*bounds))
     
+    # Ensure the GeoDataFrame is in the correct CRS
+    if gdf.crs != raster_crs:
+        gdf = gdf.to_crs(raster_crs)
+    
     logging.info(f"Final GeoDataFrame CRS: {gdf.crs}")
     logging.info(f"Final GeoDataFrame bounds: {gdf.total_bounds}")
     
@@ -147,15 +151,11 @@ def process_tile_alpha(raster_path, out_folder, tile_name, params):
     # Save to file with parameters in filename
     output_file = os.path.join(
         out_folder, 
-        f"{tile_name}_buildings_a{params['alpha_value']}_m{params['min_area']}_b{params['buffer_distance']}_e{params['eps']}_s{params['min_samples']}_ma{params['max_area']}.geojson"
+        f"{tile_name}_alpha_simplified_buildings.geojson"
     )
     buildings_gdf.to_file(output_file, driver="GeoJSON")
     logging.info(f"Saved {len(buildings_gdf)} buildings to {output_file}")
     
-    return buildings_gdf
-
-def main_alpha(raster_path, out_folder, tile_name, params):
-    buildings_gdf = process_tile_alpha(raster_path, out_folder, tile_name, params)
     return buildings_gdf
 
 if __name__ == "__main__":

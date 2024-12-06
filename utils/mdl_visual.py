@@ -10,10 +10,8 @@ import pandas as pd
 
 def plot_gt_vs_simplified(gt_gdf, simplified_gdf, eval_results, output_path, tile_name):
     logging.info(f"Starting plot generation for tile: {tile_name}")
-    logging.info(f"Ground Truth GeoDataFrame: {len(gt_gdf)} geometries")
-    logging.info(f"Simplified GeoDataFrame: {len(simplified_gdf)} geometries")
-    
-    plt.figure(figsize=(12, 8)) # Updated figure size
+
+    plt.figure(figsize=(12, 8))
     ax = plt.gca()
 
     ax.set_aspect('equal', 'box')
@@ -33,7 +31,6 @@ def plot_gt_vs_simplified(gt_gdf, simplified_gdf, eval_results, output_path, til
     for _, row in gt_gdf.iterrows():
         plot_polygon(ax, row['geometry'], 'red')
     logging.info(f"Plotted {len(gt_gdf)} ground truth polygons")
-
 
     # Plot simplified
     simplified_gdf.plot(ax=ax, facecolor='none', edgecolor='blue', linewidth=2)
@@ -80,9 +77,7 @@ def plot_gt_vs_simplified(gt_gdf, simplified_gdf, eval_results, output_path, til
     logging.info(f"Saving plot to: {output_path}")
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
-
     logging.info(f"Plot saved to {output_path}")
-    logging.info("Plot generation completed")
 
 def plot_initial_separation(raster_data, labeled_buildings, output_path, transform):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
@@ -112,7 +107,6 @@ def plot_initial_separation(raster_data, labeled_buildings, output_path, transfo
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
-    logging.info(f"Initial separation plot saved to {output_path}")
 
 def drawmultipolygon(polygon:shapely.geometry, pts:np.ndarray=None, title:str="", savepath:str=""):
     fcolor=["r","b","g","c"]

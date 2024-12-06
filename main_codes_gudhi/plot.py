@@ -1,42 +1,20 @@
-import json
-import matplotlib.pyplot as plt
+import geopandas as gpd
+import logging
 
-def plot_polygon_from_json(json_path):
-    """
-    Plots a polygon from a JSON file containing GeoJSON-like structure.
+logging.basicConfig(level=logging.INFO)
 
-    Parameters:
-        json_path (str): Path to the JSON file containing the polygon data.
-    """
-    # Load the JSON file
-    with open(json_path, 'r') as f:
-        data = json.load(f)
+def check_building_coordinates(geojson_path):
+    gdf = gpd.read_file(geojson_path)
+    logging.info(f"Total buildings: {len(gdf)}")
     
-    # Ensure it's a Polygon type
-    if data['type'] != 'Polygon':
-        raise ValueError("The JSON file does not contain a 'Polygon' geometry type.")
+    for idx, row in gdf.iterrows():
+        centroid = row.geometry.centroid
+        logging.info(f"Building {idx + 1}: Centroid coordinates: ({centroid.x}, {centroid.y})")
+        logging.info(f"Building {idx + 1}: Bounding box: {row.geometry.bounds}")
 
-    # Extract coordinates
-    coordinates = data['coordinates'][0]  # Assuming a single polygon (no holes)
+    logging.info(f"Overall bounding box: {gdf.total_bounds}")
 
-    # Separate x and y coordinates
-    x_coords, y_coords = zip(*coordinates)
+# Usage
+alpha_results_path = "/Users/Rebekka/GiHub/PHshapeModified/output/spes/evaluation/tile_26_9_alpha_evaluation.geojson"
+check_building_coordinates(alpha_results_path)
 
-    # Plot the polygon
-    plt.figure(figsize=(8, 8))
-    plt.plot(x_coords, y_coords, '-o', label='Polygon')
-    plt.fill(x_coords, y_coords, alpha=0.3, label='Filled Polygon')  # Optional fill
-    plt.xlabel('X Coordinates')
-    plt.ylabel('Y Coordinates')
-    plt.title('Polygon Plot from JSON')
-    plt.grid(True)
-    plt.legend()
-    plt.axis('equal')  # Equal scaling for proper visualization
-    plt.show()
-
-
-# Example usage
-if __name__ == "__main__":
-    # Replace 'your_file_path.json' with the path to your JSON file
-    json_path = '/Users/Rebekka/GiHub/PHshapeModified/output/visualizations/tile_test_1_building_1.json'
-    plot_polygon_from_json(json_path)
